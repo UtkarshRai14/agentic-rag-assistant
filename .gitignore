@@ -1,0 +1,29 @@
+# secrets
+.env
+.env.local
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# data / runtime artifacts
+chroma_db/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+
+# misc
+.DS_Store
+*.log
