@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+/* Class-based dark mode (toggled on <html>) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-bg: oklch(99% 0.003 260);
+  --color-surface: oklch(97% 0.004 260);
+  --color-surface-2: oklch(94% 0.005 260);
+  --color-border: oklch(90% 0.006 260);
+  --color-fg: oklch(22% 0.01 260);
+  --color-muted: oklch(52% 0.012 260);
+  --color-accent: oklch(58% 0.18 264);
+  --color-accent-fg: oklch(98% 0 0);
+  --color-ok: oklch(62% 0.16 150);
+  --color-warn: oklch(70% 0.16 70);
+  --color-danger: oklch(58% 0.2 25);
+
+  --radius-xl: 1rem;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.dark {
+  --color-bg: oklch(18% 0.012 264);
+  --color-surface: oklch(22% 0.014 264);
+  --color-surface-2: oklch(26% 0.016 264);
+  --color-border: oklch(32% 0.018 264);
+  --color-fg: oklch(95% 0.005 264);
+  --color-muted: oklch(68% 0.014 264);
+  --color-accent: oklch(72% 0.15 264);
+  --color-accent-fg: oklch(18% 0.02 264);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Timeline step entry — CSS-driven, no JS */
+@keyframes step-in {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+.step-enter {
+  animation: step-in 0.32s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-enter {
+    animation-duration: 0.01ms;
+  }
+}
+
+/* Pulsing dot for in-progress steps */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pulse {
+  animation: pulse-soft 1.2s ease-in-out infinite;
+}
+
+/* Markdown prose */
+.prose-chat :where(p, ul, ol, pre, blockquote, table):not(:last-child) {
+  margin-bottom: 0.75rem;
+}
+.prose-chat ul { list-style: disc; padding-left: 1.25rem; }
+.prose-chat ol { list-style: decimal; padding-left: 1.25rem; }
+.prose-chat code:not(pre code) {
+  background: var(--color-surface-2);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+  font-size: 0.85em;
+}
+.prose-chat pre:not(.shiki) {
+  background: oklch(16% 0.02 264);
+  color: oklch(92% 0.02 264);
+  border-radius: 0.6rem;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+
+/* Shiki dual-theme (codeToHtml with defaultColor:false) */
+.prose-chat .shiki {
+  border-radius: 0.6rem;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.85em;
+  background-color: var(--shiki-light-bg);
+}
+.prose-chat .shiki span {
+  color: var(--shiki-light);
+}
+.dark .prose-chat .shiki {
+  background-color: var(--shiki-dark-bg);
+}
+.dark .prose-chat .shiki span {
+  color: var(--shiki-dark);
+}
+.prose-chat a { color: var(--color-accent); text-decoration: underline; }
+.prose-chat h1, .prose-chat h2, .prose-chat h3 { font-weight: 600; margin: 0.5rem 0; }
+.prose-chat table { border-collapse: collapse; }
+.prose-chat th, .prose-chat td { border: 1px solid var(--color-border); padding: 0.3rem 0.6rem; }
+
+/* thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
