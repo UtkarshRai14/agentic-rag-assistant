@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     langsmith_endpoint: str = "https://api.smith.langchain.com"
 
     # --- models ---
-    model_fast: str = "gemini-2.5-flash"
-    model_heavy: str = "gemini-2.5-flash"
+    model_fast: str = "gemini-3.8-flash"
+    model_heavy: str = "gemini-3.8-flash"
     embedding_model: str = "gemini-embedding-2"
     reasoning_effort: str = "medium"
 

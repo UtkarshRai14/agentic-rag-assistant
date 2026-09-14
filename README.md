@@ -107,7 +107,7 @@ sequenceDiagram
 | Layer                     | Stack                                                                                                               |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Agent / orchestration** | LangGraph 1.2 (`create_agent`, `AsyncSqliteSaver`), LangChain 1.3                                                   |
-| **LLMs**                  | Google Gemini **`gemini-2.5-flash`** (routine + synthesis); `gemini-embedding-2` |
+| **LLMs**                  | Google Gemini **`gemini-3.8-flash`** (routine + synthesis); `gemini-embedding-2` |
 | **Retrieval**             | Chroma 1.5 (persisted) · `RecursiveCharacterTextSplitter` · Tavily / DuckDuckGo                                     |
 | **Observability**         | LangSmith 0.8 tracing · `openevals` LLM-as-judge                                                                    |
 | **Backend**               | FastAPI · `sse-starlette` · pydantic-settings · uv · Python 3.12                                                    |
