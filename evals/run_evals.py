@@ -25,7 +25,7 @@ from openevals.prompts import (
 from evals.create_dataset import DATASET_NAME
 from rag_agent.agent import build_agent
 
-JUDGE_MODEL = "openai:gpt-5.4-mini"
+JUDGE_MODEL = "google_genai:gemini-2.5-flash"
 
 _agent = build_agent()  # no checkpointer: each example is independent
 

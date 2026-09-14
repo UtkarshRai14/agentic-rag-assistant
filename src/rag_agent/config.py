@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     )
 
     # --- credentials ---
-    openai_api_key: str
+    google_api_key: str
     tavily_api_key: str | None = None
 
     # --- LangSmith (tracing auto-enables when LANGSMITH_TRACING=true + key set) ---
@@ -28,10 +28,10 @@ class Settings(BaseSettings):
     langsmith_project: str = "resume-demo-rag-agent"
     langsmith_endpoint: str = "https://api.smith.langchain.com"
 
-    # --- models (gpt-5 series only; never gpt-4*) ---
-    model_fast: str = "gpt-5.4-mini"
-    model_heavy: str = "gpt-5.5"
-    embedding_model: str = "text-embedding-3-small"
+    # --- models ---
+    model_fast: str = "gemini-2.5-flash"
+    model_heavy: str = "gemini-2.5-flash"
+    embedding_model: str = "gemini-embedding-2"
     reasoning_effort: str = "medium"
 
     # --- storage / retrieval ---

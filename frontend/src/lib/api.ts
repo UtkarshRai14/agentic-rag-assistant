@@ -1,3 +1,10 @@
+const configuredApiUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, "");
+export const API_BASE_URL = configuredApiUrl
+  ? configuredApiUrl.endsWith("/api")
+    ? configuredApiUrl
+    : `${configuredApiUrl}/api`
+  : "/api";
+
 export interface Health {
   status: string;
   model_fast: string;
@@ -9,7 +16,7 @@ export interface Health {
 }
 
 export async function fetchHealth(): Promise<Health> {
-  const res = await fetch("/api/health");
+  const res = await fetch(`${API_BASE_URL}/health`);
   if (!res.ok) throw new Error(`health ${res.status}`);
   return res.json();
 }
@@ -22,7 +29,7 @@ export interface IngestResult {
 export async function uploadDocuments(files: File[]): Promise<IngestResult> {
   const form = new FormData();
   for (const f of files) form.append("files", f);
-  const res = await fetch("/api/ingest", { method: "POST", body: form });
+  const res = await fetch(`${API_BASE_URL}/ingest`, { method: "POST", body: form });
   if (!res.ok) throw new Error(`ingest ${res.status}`);
   return res.json();
 }

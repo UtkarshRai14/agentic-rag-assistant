@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from langchain.agents import create_agent
 from langchain_core.messages import ToolMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langsmith import Client
 from langsmith.evaluation import evaluate_comparative
 
@@ -18,12 +18,12 @@ from evals.create_dataset import DATASET_NAME
 from rag_agent.agent import SYSTEM_PROMPT
 from rag_agent.tools import build_tools
 
-JUDGE_MODEL = "gpt-5.4-mini"
+JUDGE_MODEL = "gemini-2.5-flash"
 
 
 def _make_target(model_name: str):
     agent = create_agent(
-        model=ChatOpenAI(model=model_name, streaming=False),
+        model=ChatGoogleGenerativeAI(model=model_name, streaming=False),
         tools=build_tools(),
         system_prompt=SYSTEM_PROMPT,
     )
@@ -41,7 +41,7 @@ def _make_target(model_name: str):
     return target
 
 
-_judge = ChatOpenAI(model=JUDGE_MODEL, temperature=0)
+_judge = ChatGoogleGenerativeAI(model=JUDGE_MODEL, temperature=0)
 
 
 def ranked_preference(runs: list, example) -> dict:
@@ -71,17 +71,17 @@ def main() -> None:
     client = Client()
 
     heavy = client.evaluate(
-        _make_target("gpt-5.5"),
+        _make_target("gemini-2.5-flash"),
         data=DATASET_NAME,
         experiment_prefix="rag-agent-heavy",
-        metadata={"model": "gpt-5.5"},
+        metadata={"model": "gemini-2.5-flash"},
         max_concurrency=4,
     )
     fast = client.evaluate(
-        _make_target("gpt-5.4-mini"),
+        _make_target("gemini-2.5-flash"),
         data=DATASET_NAME,
         experiment_prefix="rag-agent-fast",
-        metadata={"model": "gpt-5.4-mini"},
+        metadata={"model": "gemini-2.5-flash"},
         max_concurrency=4,
     )
 

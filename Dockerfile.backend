@@ -1,0 +1,17 @@
+# Backend: FastAPI + LangGraph agent
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
+WORKDIR /app
+
+# Install dependencies first (better layer caching)
+COPY pyproject.toml uv.lock ./
+COPY src ./src
+RUN uv sync --frozen --no-dev
+
+# Sample docs for first-boot ingestion
+COPY data ./data
+
+ENV PATH="/app/.venv/bin:$PATH"
+EXPOSE 8000
+
+CMD ["uvicorn", "rag_agent.api:app", "--host", "0.0.0.0", "--port", "8000"]

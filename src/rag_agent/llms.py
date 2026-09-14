@@ -1,33 +1,25 @@
-"""ChatOpenAI factories. gpt-5 series only — gpt-4* chat models are forbidden."""
+"""Google Gemini chat model factories."""
 
 from __future__ import annotations
 
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from rag_agent.config import settings
 
 
-def _assert_gpt5(model: str) -> None:
-    if model.startswith(("gpt-4", "gpt-3")):
-        raise ValueError(
-            f"Refusing to use obsolete chat model {model!r}; use the gpt-5 series."
-        )
-
-
-def fast_model() -> ChatOpenAI:
+def fast_model() -> ChatGoogleGenerativeAI:
     """Small, cheap model for routine steps."""
-    _assert_gpt5(settings.model_fast)
-    return ChatOpenAI(model=settings.model_fast, streaming=True)
-
-
-def heavy_model() -> ChatOpenAI:
-    """Capable reasoning model for planning + answer synthesis.
-
-    Passing ``reasoning`` makes langchain-openai route through the Responses API.
-    """
-    _assert_gpt5(settings.model_heavy)
-    return ChatOpenAI(
-        model=settings.model_heavy,
+    return ChatGoogleGenerativeAI(
+        model=settings.model_fast,
+        google_api_key=settings.google_api_key,
         streaming=True,
-        reasoning={"effort": settings.reasoning_effort},
+    )
+
+
+def heavy_model() -> ChatGoogleGenerativeAI:
+    """Capable model for planning + answer synthesis."""
+    return ChatGoogleGenerativeAI(
+        model=settings.model_heavy,
+        google_api_key=settings.google_api_key,
+        streaming=True,
     )

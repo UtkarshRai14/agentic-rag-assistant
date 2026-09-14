@@ -1,5 +1,6 @@
 import { useCallback, useReducer, useRef } from "react";
 import { parseSSEStream } from "@/lib/sse";
+import { API_BASE_URL } from "@/lib/api";
 import type { AgentEvent, Source, StepStatus } from "@/lib/events";
 
 export interface TimelineNode {
@@ -111,7 +112,7 @@ export function useAgentStream() {
     dispatch({ kind: "user", text: message });
 
     try {
-      const res = await fetch("/api/chat/stream", {
+      const res = await fetch(`${API_BASE_URL}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify({ message, thread_id: threadRef.current }),
