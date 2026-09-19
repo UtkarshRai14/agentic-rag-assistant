@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -32,16 +33,27 @@ def ingest_paths(paths: list[str]) -> int:
     """Ingest the given files. Returns the number of chunks added."""
     docs: list[Document] = []
     for p in paths:
+        content_hash = hashlib.sha256(Path(p).read_bytes()).hexdigest()
+        existing = get_vectorstore()._collection.get(
+            where={"content_hash": content_hash}, limit=1
+        )
+        if existing.get("ids"):
+            continue
         loaded = _load_file(p)
         for d in loaded:
             d.metadata.setdefault("source", os.path.basename(p))
+            d.metadata["content_hash"] = content_hash
         docs.extend(loaded)
 
     if not docs:
         return 0
 
     chunks = _splitter.split_documents(docs)
-    get_vectorstore().add_documents(chunks)
+    ids = [
+        f"{chunk.metadata['content_hash']}-{index}"
+        for index, chunk in enumerate(chunks)
+    ]
+    get_vectorstore().add_documents(chunks, ids=ids)
     return len(chunks)
 
 

@@ -86,8 +86,17 @@ def main() -> None:
         )
         print(f"Created dataset: {dataset.id}")
 
-    client.create_examples(dataset_id=dataset.id, examples=EXAMPLES)
-    print(f"Added {len(EXAMPLES)} examples to '{DATASET_NAME}'.")
+    existing = {
+        example.inputs.get("question")
+        for example in client.list_examples(dataset_id=dataset.id)
+    }
+    new_examples = [
+        example for example in EXAMPLES
+        if example["inputs"]["question"] not in existing
+    ]
+    if new_examples:
+        client.create_examples(dataset_id=dataset.id, examples=new_examples)
+    print(f"Added {len(new_examples)} new examples to '{DATASET_NAME}'.")
 
 
 if __name__ == "__main__":

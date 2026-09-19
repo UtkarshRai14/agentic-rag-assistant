@@ -16,9 +16,10 @@ from langsmith.evaluation import evaluate_comparative
 
 from evals.create_dataset import DATASET_NAME
 from rag_agent.agent import SYSTEM_PROMPT
+from rag_agent.config import settings
 from rag_agent.tools import build_tools
 
-JUDGE_MODEL = "gemini-2.5-flash"
+JUDGE_MODEL = settings.model_heavy
 
 
 def _make_target(model_name: str):
@@ -71,17 +72,17 @@ def main() -> None:
     client = Client()
 
     heavy = client.evaluate(
-        _make_target("gemini-2.5-flash"),
+        _make_target(settings.model_heavy),
         data=DATASET_NAME,
         experiment_prefix="rag-agent-heavy",
-        metadata={"model": "gemini-2.5-flash"},
+        metadata={"model": settings.model_heavy},
         max_concurrency=4,
     )
     fast = client.evaluate(
-        _make_target("gemini-2.5-flash"),
+        _make_target(settings.model_fast),
         data=DATASET_NAME,
         experiment_prefix="rag-agent-fast",
-        metadata={"model": "gemini-2.5-flash"},
+        metadata={"model": settings.model_fast},
         max_concurrency=4,
     )
 

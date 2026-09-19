@@ -9,9 +9,12 @@ Stream modes used (astream yields ``(mode, chunk)`` tuples for a list):
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, AsyncIterator
 
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
+
+logger = logging.getLogger(__name__)
 
 
 def _sse(event: str, data: dict) -> dict:
@@ -103,10 +106,15 @@ async def agent_event_stream(
                         },
                     )
 
-    except Exception as exc:  # surface as a fatal SSE error, don't 500 mid-stream
+    except Exception:
+        logger.exception("Agent stream failed for thread %s", thread_id)
         yield _sse(
             "error",
-            {"thread_id": thread_id, "message": str(exc), "fatal": True},
+            {
+                "thread_id": thread_id,
+                "message": "The assistant could not complete this request. Please try again.",
+                "fatal": True,
+            },
         )
 
     yield _sse("end", {"thread_id": thread_id})

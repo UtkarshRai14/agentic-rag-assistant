@@ -19,8 +19,12 @@ class Settings(BaseSettings):
     )
 
     # --- credentials ---
-    google_api_key: str
+    google_api_key: str = ""
     tavily_api_key: str | None = None
+    app_auth_password: str = ""
+    auth_secret: str = ""
+    auth_cookie_secure: bool = False
+    frontend_origin: str = "http://localhost:8080"
 
     # --- LangSmith (tracing auto-enables when LANGSMITH_TRACING=true + key set) ---
     langsmith_tracing: bool = False
@@ -29,8 +33,8 @@ class Settings(BaseSettings):
     langsmith_endpoint: str = "https://api.smith.langchain.com"
 
     # --- models ---
-    model_fast: str = "gemini-3.8-flash"
-    model_heavy: str = "gemini-3.8-flash"
+    model_fast: str = "gemini-2.5-flash-lite"
+    model_heavy: str = "gemini-2.5-flash"
     embedding_model: str = "gemini-embedding-2"
     reasoning_effort: str = "medium"
 
@@ -40,6 +44,8 @@ class Settings(BaseSettings):
     sqlite_path: str = "./memory.sqlite"
     retriever_k: int = 4
     sample_docs_dir: str = "./data/sample_docs"
+    max_upload_bytes: int = 10 * 1024 * 1024
+    max_upload_count: int = 10
 
     @property
     def web_backend(self) -> str:

@@ -117,6 +117,7 @@ export function useAgentStream() {
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify({ message, thread_id: threadRef.current }),
         signal: ac.signal,
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

@@ -24,8 +24,9 @@ from openevals.prompts import (
 
 from evals.create_dataset import DATASET_NAME
 from rag_agent.agent import build_agent
+from rag_agent.config import settings
 
-JUDGE_MODEL = "google_genai:gemini-2.5-flash"
+JUDGE_MODEL = f"google_genai:{settings.model_heavy}"
 
 _agent = build_agent()  # no checkpointer: each example is independent
 

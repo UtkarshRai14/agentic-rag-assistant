@@ -16,7 +16,7 @@ export interface Health {
 }
 
 export async function fetchHealth(): Promise<Health> {
-  const res = await fetch(`${API_BASE_URL}/health`);
+  const res = await fetch(`${API_BASE_URL}/health`, { credentials: "include" });
   if (!res.ok) throw new Error(`health ${res.status}`);
   return res.json();
 }
@@ -29,7 +29,26 @@ export interface IngestResult {
 export async function uploadDocuments(files: File[]): Promise<IngestResult> {
   const form = new FormData();
   for (const f of files) form.append("files", f);
-  const res = await fetch(`${API_BASE_URL}/ingest`, { method: "POST", body: form });
+  const res = await fetch(`${API_BASE_URL}/ingest`, {
+    method: "POST",
+    body: form,
+    credentials: "include",
+  });
   if (!res.ok) throw new Error(`ingest ${res.status}`);
   return res.json();
+}
+
+export async function checkSession(): Promise<boolean> {
+  const res = await fetch(`${API_BASE_URL}/auth/session`, { credentials: "include" });
+  return res.ok;
+}
+
+export async function login(password: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) throw new Error("Invalid password");
 }

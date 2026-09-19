@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from rag_agent.agent import build_agent
+from rag_agent.auth import AUTH_COOKIE, create_session, require_auth
 from rag_agent.config import settings
 from rag_agent.ingest import ensure_seeded, ingest_paths
 from rag_agent.schemas import (
@@ -22,6 +25,8 @@ from rag_agent.schemas import (
 )
 from rag_agent.streaming import agent_event_stream
 from rag_agent.vectorstore import collection_count
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -41,9 +46,10 @@ app = FastAPI(title="Agentic RAG Assistant", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # demo: tighten in production
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[settings.frontend_origin],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Accept"],
+    allow_credentials=True,
 )
 
 
@@ -60,20 +66,60 @@ async def health() -> HealthResponse:
     )
 
 
-@app.post("/api/ingest", response_model=IngestResponse)
+@app.post("/api/auth/login")
+async def login(request: Request) -> JSONResponse:
+    body = await request.json()
+    password = body.get("password") if isinstance(body, dict) else None
+    if not settings.app_auth_password or not settings.auth_secret:
+        raise HTTPException(status_code=503, detail="Authentication is not configured.")
+    if not isinstance(password, str) or password != settings.app_auth_password:
+        raise HTTPException(status_code=401, detail="Invalid credentials.")
+    response = JSONResponse({"ok": True})
+    response.set_cookie(
+        AUTH_COOKIE,
+        create_session(),
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        max_age=60 * 60 * 24,
+    )
+    return response
+
+
+@app.get("/api/auth/session")
+async def session(request: Request) -> dict:
+    require_auth(request)
+    return {"authenticated": True}
+
+
+@app.post("/api/ingest", response_model=IngestResponse, dependencies=[Depends(require_auth)])
 async def ingest(files: list[UploadFile] = File(...)) -> IngestResponse:
+    if not files or len(files) > settings.max_upload_count:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Upload between 1 and {settings.max_upload_count} files.",
+        )
     tmp_paths: list[str] = []
     names: list[str] = []
     for f in files:
-        suffix = os.path.splitext(f.filename or "upload")[1] or ".txt"
+        original_name = (f.filename or "upload.txt").replace("\\", "/").split("/")[-1]
+        suffix = "." + original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+        if suffix not in {".pdf", ".txt", ".md", ".markdown"}:
+            raise HTTPException(status_code=415, detail="Only PDF, TXT, and Markdown files are supported.")
+        content = await f.read(settings.max_upload_bytes + 1)
+        if not content:
+            raise HTTPException(status_code=400, detail="Uploaded files must not be empty.")
+        if len(content) > settings.max_upload_bytes:
+            limit_mb = settings.max_upload_bytes // (1024 * 1024)
+            raise HTTPException(
+                status_code=413,
+                detail=f"Each uploaded file must be {limit_mb} MB or smaller.",
+            )
         fd, path = tempfile.mkstemp(suffix=suffix)
-        with os.fdopen(fd, "wb") as out:
-            out.write(await f.read())
-        # preserve original filename as the source label
-        labeled = os.path.join(os.path.dirname(path), f.filename or os.path.basename(path))
-        os.replace(path, labeled)
-        tmp_paths.append(labeled)
-        names.append(f.filename or os.path.basename(labeled))
+        with open(fd, "wb", closefd=True) as out:
+            out.write(content)
+        tmp_paths.append(path)
+        names.append(original_name)
 
     try:
         added = ingest_paths(tmp_paths)
@@ -87,7 +133,7 @@ async def ingest(files: list[UploadFile] = File(...)) -> IngestResponse:
     return IngestResponse(chunks_added=added, files=names)
 
 
-@app.post("/api/chat/stream")
+@app.post("/api/chat/stream", dependencies=[Depends(require_auth)])
 async def chat_stream(req: ChatRequest, request: Request) -> EventSourceResponse:
     thread_id = req.thread_id or str(uuid.uuid4())
     agent = request.app.state.agent
@@ -104,7 +150,7 @@ async def chat_stream(req: ChatRequest, request: Request) -> EventSourceResponse
     )
 
 
-@app.post("/api/feedback")
+@app.post("/api/feedback", dependencies=[Depends(require_auth)])
 async def feedback(req: FeedbackRequest) -> dict:
     """Forward end-user thumbs up/down into LangSmith."""
     try:
@@ -114,5 +160,6 @@ async def feedback(req: FeedbackRequest) -> dict:
             run_id=req.run_id, key=req.key, score=req.score, comment=req.comment
         )
         return {"ok": True}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+    except Exception:
+        logger.exception("Failed to submit feedback for run %s", req.run_id)
+        return {"ok": False, "error": "Feedback could not be submitted."}

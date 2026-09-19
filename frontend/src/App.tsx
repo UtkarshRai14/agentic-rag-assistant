@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Database, Activity } from "lucide-react";
 import { useAgentStream } from "@/hooks/useAgentStream";
-import { fetchHealth, type Health } from "@/lib/api";
+import { checkSession, fetchHealth, type Health } from "@/lib/api";
+import { AuthGate } from "@/components/AuthGate";
 import { AppShell } from "@/components/layout/AppShell";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ActivityTimeline } from "@/components/agent/ActivityTimeline";
@@ -29,11 +30,19 @@ function HealthBadge({ health }: { health: Health | null }) {
 export default function App() {
   const stream = useAgentStream();
   const [health, setHealth] = useState<Health | null>(null);
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
 
   const refreshHealth = () => fetchHealth().then(setHealth).catch(() => {});
   useEffect(() => {
-    refreshHealth();
+    checkSession().then(setAuthenticated);
   }, []);
+
+  useEffect(() => {
+    if (authenticated) refreshHealth();
+  }, [authenticated]);
+
+  if (authenticated === null) return null;
+  if (!authenticated) return <AuthGate onAuthenticated={() => setAuthenticated(true)} />;
 
   return (
     <AppShell

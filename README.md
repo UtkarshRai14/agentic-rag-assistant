@@ -13,7 +13,6 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge\&logo=typescript\&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-06B6D4?style=for-the-badge\&logo=tailwindcss\&logoColor=white)](https://tailwindcss.com/)
 [![Docker](https://img.shields.io/badge/Docker-compose-2496ED?style=for-the-badge\&logo=docker\&logoColor=white)](https://www.docker.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](./LICENSE)
 
 <br/>
 
@@ -33,6 +32,9 @@ A production-shaped demo of an **agentic RAG** system built on **LangChain + Lan
 * 🪄 **SOTA UI** — React 19 + Vite + Tailwind v4: live agent-activity timeline, clickable `[n]` citation chips, drag-and-drop ingestion, markdown + syntax-highlighted answers, dark mode.
 * 🔬 **Real evaluation suite** — a LangSmith dataset scored by LLM-as-judge correctness, RAG groundedness & retrieval-relevance, and a citation heuristic, plus a pairwise model comparison.
 * 🐳 **One command to run** — `docker compose up` brings up the backend and a single-origin nginx-served frontend.
+
+This is a single-user/private deployment. The document collection and conversation memory are stored in
+the application's local persistent storage; this project does not provide multi-user isolation.
 
 ## 🖼️ Screenshots
 
@@ -107,7 +109,7 @@ sequenceDiagram
 | Layer                     | Stack                                                                                                               |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Agent / orchestration** | LangGraph 1.2 (`create_agent`, `AsyncSqliteSaver`), LangChain 1.3                                                   |
-| **LLMs**                  | Google Gemini **`gemini-3.8-flash`** (routine + synthesis); `gemini-embedding-2` |
+| **LLMs**                  | Google Gemini **`gemini-2.5-flash-lite`** (routine/evaluation baseline) + **`gemini-2.5-flash`** (agent reasoning); `gemini-embedding-2` |
 | **Retrieval**             | Chroma 1.5 (persisted) · `RecursiveCharacterTextSplitter` · Tavily / DuckDuckGo                                     |
 | **Observability**         | LangSmith 0.8 tracing · `openevals` LLM-as-judge                                                                    |
 | **Backend**               | FastAPI · `sse-starlette` · pydantic-settings · uv · Python 3.12                                                    |
@@ -125,6 +127,9 @@ cp .env.example .env
 ```
 
 Fill in the required environment variables, including `GOOGLE_API_KEY`. `TAVILY_API_KEY` and the LangSmith variables are optional.
+Set `APP_AUTH_PASSWORD` and a long random `AUTH_SECRET` for the single-user login. Keep `AUTH_COOKIE_SECURE=false`
+for local HTTP development and set it to `true` behind HTTPS. `FRONTEND_ORIGIN` must match the browser origin
+(the Docker frontend defaults to `http://localhost:8080`).
 
 ### Docker (recommended)
 
@@ -137,7 +142,16 @@ docker compose logs -f backend
 docker compose down
 ```
 
-The frontend container serves the built UI and proxies `/api` to the backend, so everything is single-origin — no CORS.
+The frontend container serves the built UI and proxies `/api` to the backend. The backend still restricts CORS
+to `FRONTEND_ORIGIN` for direct browser access.
+
+Uploads are limited to 10 PDF/TXT/Markdown files per request and 10 MiB per file. Re-uploading the same
+document content is skipped using a SHA-256 content hash.
+
+Chroma and SQLite are persisted in the Docker `state` volume. Keep that volume (or the equivalent local
+directories) when upgrading or restarting the application; ephemeral/serverless deployments can lose the
+document index and conversation memory. The current design is intended for one application instance and
+one authenticated user, not horizontal scaling or multi-user isolation.
 
 ### Local dev
 
@@ -164,11 +178,16 @@ On first boot the backend ingests `data/sample_docs/` (a fictional "Aurora" anal
 | `LANGSMITH_TRACING` | ➖        | `false`                  | Master switch for tracing                              |
 | `LANGSMITH_API_KEY` | ➖        | —                        | LangSmith auth (tracing + evals)                       |
 | `LANGSMITH_PROJECT` | ➖        | `resume-demo-rag-agent`  | Trace project name                                     |
-| `MODEL_FAST`        | ➖        | `gemini-2.5-flash`       | Routine-step model                                     |
+| `APP_AUTH_PASSWORD` | ✅        | —                       | Single-user application password                       |
+| `AUTH_SECRET`       | ✅        | —                       | Secret used to sign the HttpOnly session cookie        |
+| `FRONTEND_ORIGIN`   | ➖        | `http://localhost:8080` | Allowed browser origin                                |
+| `MODEL_FAST`        | ➖        | `gemini-2.5-flash-lite` | Fast evaluation/lightweight model                     |
 | `MODEL_HEAVY`       | ➖        | `gemini-2.5-flash`       | Planning / synthesis model                             |
 | `EMBEDDING_MODEL`   | ➖        | `gemini-embedding-2`     | Embeddings                                             |
 | `VITE_API_URL`      | ➖        | same-origin              | Deployed backend URL (frontend build-time setting)     |
 | `RETRIEVER_K`       | ➖        | `4`                      | Chunks retrieved per query                             |
+| `MAX_UPLOAD_BYTES`  | ➖        | `10485760`               | Maximum bytes per uploaded file                       |
+| `MAX_UPLOAD_COUNT`  | ➖        | `10`                     | Maximum files per upload request                      |
 
 </details>
 
@@ -177,9 +196,10 @@ On first boot the backend ingests `data/sample_docs/` (a fictional "Aurora" anal
 | Method | Path               | Description                                            |
 | ------ | ------------------ | ------------------------------------------------------ |
 | `GET`  | `/api/health`      | models, web backend, tracing flag, indexed-chunk count |
-| `POST` | `/api/ingest`      | multipart upload → `{ chunks_added, files }`           |
-| `POST` | `/api/chat/stream` | SSE stream (see the streaming contract above)          |
-| `POST` | `/api/feedback`    | forward a thumbs up/down score to LangSmith            |
+| `POST` | `/api/auth/login`  | establish the single-user HttpOnly session cookie     |
+| `POST` | `/api/ingest`      | authenticated multipart upload → `{ chunks_added, files }` |
+| `POST` | `/api/chat/stream` | authenticated SSE stream (see the streaming contract above) |
+| `POST` | `/api/feedback`    | authenticated thumbs up/down score to LangSmith      |
 
 ```bash
 curl -N -X POST http://localhost:8000/api/chat/stream \
@@ -197,9 +217,12 @@ uv run python -m evals.run_evals
 uv run python -m evals.run_pairwise
 ```
 
-### Baseline results
+### Example/local results
 
-The evaluation suite includes the following recorded baseline metrics:
+The evaluation suite is an optional LangSmith harness. It runs example questions with LLM judges and can
+compare the configured fast and heavy models. The values below are example/local results from a prior run,
+not a production benchmark or guarantee of answer quality. Running the dataset script repeatedly does not
+add duplicate questions.
 
 | Evaluator             |   Score  | What it measures                                          |
 | --------------------- | :------: | --------------------------------------------------------- |
@@ -258,4 +281,3 @@ docker-compose.yml    backend (uvicorn) + frontend (nginx)
 * Token-level streaming citations (highlight sources as they're used)
 * Online evaluation + the in-UI feedback loop wired to `/api/feedback`
 * Auth and per-user document collections
-
