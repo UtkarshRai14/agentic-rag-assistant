@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     environment:
-      # GOOGLE_API_KEY lives in the shell env, not .env — forward it through.
+      # Forward GOOGLE_API_KEY explicitly (compose reads it from the shell or from .env).
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       # Keep persisted state inside the mounted volume.
       - CHROMA_DIR=/app/state/chroma_db

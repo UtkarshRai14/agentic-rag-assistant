@@ -22,7 +22,7 @@
 
 ---
 
-A production-shaped demo of an **agentic RAG** system built on **LangChain + LangGraph + LangSmith**. A LangGraph agent plans, calls tools (vector retrieval over your documents and live web search), and synthesizes an answer with inline citations. Both the answer tokens **and** the agent's intermediate steps stream to a React 19 UI over Server-Sent Events, while every run is automatically traced and offline-evaluated in LangSmith.
+A single-user demo of an **agentic RAG** system built on **LangChain + LangGraph + LangSmith**. A LangGraph agent plans, calls tools (vector retrieval over your documents and live web search), and synthesizes an answer with inline citations. Both the answer tokens **and** the agent's intermediate steps stream to a React 19 UI over Server-Sent Events, while every run is automatically traced and offline-evaluated in LangSmith.
 
 ## ✨ Highlights
 
@@ -42,7 +42,7 @@ the application's local persistent storage; this project does not provide multi-
 | --------------------------------------------- | -------------------------------------------- |
 | <img src="docs/chat-light.png" width="100%"/> | <img src="docs/hero-dark.png" width="100%"/> |
 
-The right-hand inspector shows the **agent activity timeline** (each tool call with running → done state) and the **sources** panel; inline `[1]`,`[2]` chips in the answer jump to the matching source card.
+The right-hand inspector shows the **agent activity timeline** (each tool call with running → done state) and the **sources** panel; inline `[1]`,`[2]` chips in the latest answer jump to the matching source card.
 
 ## 🏗️ Architecture
 
@@ -100,16 +100,18 @@ sequenceDiagram
 | `token`      | `messages` | `{ delta, node }` — incremental answer text                       |
 | `tool_start` | `updates`  | `{ id, tool, args }`                                              |
 | `tool_end`   | `updates`  | `{ id, tool, ok, result_preview }`                                |
-| `sources`    | `custom`   | `{ tool, sources: [{ id, kind, title, url?, snippet, score? }] }` |
+| `sources`    | `custom`   | `{ tool, sources: [{ id, number, kind, title, url?, snippet, score? }] }` |
 | `error`      | —          | `{ message, fatal }`                                              |
 | `end`        | —          | `{ thread_id }`                                                   |
+
+**Citation numbers.** Each source's `number` is assigned by the backend. It starts at 1 for every user message and keeps counting across all tool calls in that turn (including tools that run in parallel). The same number is printed next to each result in the text the model reads and shown on the matching source card, so `[n]` in the answer matches card `n`. That makes each number identify exactly one source within its turn; it does not ensure the model cites the right passage or only uses numbers from the current turn. `score` is only present for Tavily web results. After a fatal `error` the server still sends `end`, and the UI keeps the error status.
 
 ## 🧰 Tech stack
 
 | Layer                     | Stack                                                                                                               |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Agent / orchestration** | LangGraph 1.2 (`create_agent`, `AsyncSqliteSaver`), LangChain 1.3                                                   |
-| **LLMs**                  | Google Gemini **`gemini-2.5-flash-lite`** (routine/evaluation baseline) + **`gemini-2.5-flash`** (agent reasoning); `gemini-embedding-2` |
+| **LLMs**                  | Google Gemini **`gemini-2.5-flash`** (agent reasoning) + **`gemini-2.5-flash-lite`** (fast model, compared against it in the pairwise evals); `gemini-embedding-2` |
 | **Retrieval**             | Chroma 1.5 (persisted) · `RecursiveCharacterTextSplitter` · Tavily / DuckDuckGo                                     |
 | **Observability**         | LangSmith 0.8 tracing · `openevals` LLM-as-judge                                                                    |
 | **Backend**               | FastAPI · `sse-starlette` · pydantic-settings · uv · Python 3.12                                                    |
@@ -121,7 +123,7 @@ sequenceDiagram
 Clone this repository using its GitHub URL:
 
 ```bash
-git clone <https://github.com/UtkarshRai14/agentic-rag-assistant>
+git clone https://github.com/UtkarshRai14/agentic-rag-assistant
 cd agentic-rag-assistant
 cp .env.example .env
 ```
@@ -145,8 +147,10 @@ docker compose down
 The frontend container serves the built UI and proxies `/api` to the backend. The backend still restricts CORS
 to `FRONTEND_ORIGIN` for direct browser access.
 
-Uploads are limited to 10 PDF/TXT/Markdown files per request and 10 MiB per file. Re-uploading the same
-document content is skipped using a SHA-256 content hash.
+Uploads are limited to 10 PDF/TXT/Markdown files per request and 10 MiB per file. Documents with the same
+content are indexed only once (SHA-256 content hash), including identical files inside one upload.
+Each document's source name is its original filename (Chroma data created by an older version keeps the
+names it was indexed with until it is rebuilt).
 
 Chroma and SQLite are persisted in the Docker `state` volume. Keep that volume (or the equivalent local
 directories) when upgrading or restarting the application; ephemeral/serverless deployments can lose the
@@ -171,23 +175,29 @@ On first boot the backend ingests `data/sample_docs/` (a fictional "Aurora" anal
 <details>
 <summary>Environment variables</summary>
 
-| Variable            | Required | Default                  | Purpose                                                |
-| ------------------- | -------- | ------------------------ | ------------------------------------------------------ |
-| `GOOGLE_API_KEY`    | ✅        | —                        | Gemini LLMs + embeddings                              |
-| `TAVILY_API_KEY`    | ➖        | —                        | Web search (falls back to keyless DuckDuckGo if unset) |
-| `LANGSMITH_TRACING` | ➖        | `false`                  | Master switch for tracing                              |
-| `LANGSMITH_API_KEY` | ➖        | —                        | LangSmith auth (tracing + evals)                       |
-| `LANGSMITH_PROJECT` | ➖        | `resume-demo-rag-agent`  | Trace project name                                     |
-| `APP_AUTH_PASSWORD` | ✅        | —                       | Single-user application password                       |
-| `AUTH_SECRET`       | ✅        | —                       | Secret used to sign the HttpOnly session cookie        |
-| `FRONTEND_ORIGIN`   | ➖        | `http://localhost:8080` | Allowed browser origin                                |
-| `MODEL_FAST`        | ➖        | `gemini-2.5-flash-lite` | Fast evaluation/lightweight model                     |
-| `MODEL_HEAVY`       | ➖        | `gemini-2.5-flash`       | Planning / synthesis model                             |
-| `EMBEDDING_MODEL`   | ➖        | `gemini-embedding-2`     | Embeddings                                             |
-| `VITE_API_URL`      | ➖        | same-origin              | Deployed backend URL (frontend build-time setting)     |
-| `RETRIEVER_K`       | ➖        | `4`                      | Chunks retrieved per query                             |
-| `MAX_UPLOAD_BYTES`  | ➖        | `10485760`               | Maximum bytes per uploaded file                       |
-| `MAX_UPLOAD_COUNT`  | ➖        | `10`                     | Maximum files per upload request                      |
+| Variable              | Required | Default                           | Purpose                                                       |
+| --------------------- | -------- | --------------------------------- | ------------------------------------------------------------- |
+| `GOOGLE_API_KEY`      | ✅        | —                                 | Gemini LLMs + embeddings                                      |
+| `APP_AUTH_PASSWORD`   | ✅        | —                                 | Single-user application password                              |
+| `AUTH_SECRET`         | ✅        | —                                 | Secret used to sign the HttpOnly session cookie               |
+| `AUTH_COOKIE_SECURE`  | ➖        | `false`                           | Set `true` behind HTTPS so the session cookie is `Secure`     |
+| `FRONTEND_ORIGIN`     | ➖        | `http://localhost:8080`           | Allowed browser origin (CORS)                                 |
+| `TAVILY_API_KEY`      | ➖        | —                                 | Web search (uses keyless DuckDuckGo if unset)                 |
+| `LANGSMITH_TRACING`   | ➖        | `false`                           | Master switch for tracing                                     |
+| `LANGSMITH_API_KEY`   | ➖        | —                                 | LangSmith auth (tracing + evals)                              |
+| `LANGSMITH_PROJECT`   | ➖        | `resume-demo-rag-agent`           | Trace project name                                            |
+| `LANGSMITH_ENDPOINT`  | ➖        | `https://api.smith.langchain.com` | LangSmith API endpoint                                        |
+| `MODEL_FAST`          | ➖        | `gemini-2.5-flash-lite`           | Fast model, used for the pairwise evaluation comparison       |
+| `MODEL_HEAVY`         | ➖        | `gemini-2.5-flash`                | Agent planning / answer synthesis model                       |
+| `EMBEDDING_MODEL`     | ➖        | `gemini-embedding-2`              | Embeddings                                                    |
+| `CHROMA_DIR`          | ➖        | `./chroma_db`                     | Chroma persistence directory (`/app/state/chroma_db` in Docker Compose) |
+| `CHROMA_COLLECTION`   | ➖        | `documents`                       | Chroma collection name                                        |
+| `SQLITE_PATH`         | ➖        | `./memory.sqlite`                 | Conversation memory file (`/app/state/memory.sqlite` in Docker Compose) |
+| `SAMPLE_DOCS_DIR`     | ➖        | `./data/sample_docs`              | Documents ingested on first boot when the index is empty      |
+| `RETRIEVER_K`         | ➖        | `4`                               | Chunks retrieved per query                                    |
+| `MAX_UPLOAD_BYTES`    | ➖        | `10485760`                        | Maximum bytes per uploaded file                               |
+| `MAX_UPLOAD_COUNT`    | ➖        | `10`                              | Maximum files per upload request                              |
+| `VITE_API_URL`        | ➖        | same-origin                       | Deployed backend URL (frontend build-time setting)            |
 
 </details>
 
@@ -197,12 +207,19 @@ On first boot the backend ingests `data/sample_docs/` (a fictional "Aurora" anal
 | ------ | ------------------ | ------------------------------------------------------ |
 | `GET`  | `/api/health`      | models, web backend, tracing flag, indexed-chunk count |
 | `POST` | `/api/auth/login`  | establish the single-user HttpOnly session cookie     |
+| `GET`  | `/api/auth/session` | `200` if the session cookie is valid, `401` otherwise |
 | `POST` | `/api/ingest`      | authenticated multipart upload → `{ chunks_added, files }` |
 | `POST` | `/api/chat/stream` | authenticated SSE stream (see the streaming contract above) |
-| `POST` | `/api/feedback`    | authenticated thumbs up/down score to LangSmith      |
+| `POST` | `/api/feedback`    | authenticated score for a LangSmith `run_id` (API only; the UI does not call it) |
+
+The chat, ingest and feedback endpoints need the session cookie, so log in first:
 
 ```bash
-curl -N -X POST http://localhost:8000/api/chat/stream \
+curl -c cookies.txt -X POST http://localhost:8000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"password":"<APP_AUTH_PASSWORD>"}'
+
+curl -N -b cookies.txt -X POST http://localhost:8000/api/chat/stream \
   -H 'Content-Type: application/json' \
   -d '{"message":"What auth does Aurora use, and what is mTLS? Cite sources."}'
 ```
@@ -243,8 +260,8 @@ add duplicate questions.
 | **Custom streaming** | mapping `messages`/`updates`/`custom` channels → a clean SSE contract for the UI             |
 | **RAG engineering**  | loaders → chunking → embeddings → Chroma → retriever tool with source attribution            |
 | **LLM evaluation**   | LangSmith datasets, LLM-as-judge + RAG metrics, custom evaluators, pairwise experiments      |
-| **Async backend**    | FastAPI lifespan-managed agent, streaming `EventSourceResponse`, file ingestion              |
-| **Modern frontend**  | React 19 + TS streaming hook (`fetch` + `ReadableStream`), Tailwind v4, accessible dark mode |
+| **Async backend**    | FastAPI lifespan-managed agent, streaming `EventSourceResponse`, blocking ingestion run in a worker thread |
+| **Modern frontend**  | React 19 + TS streaming hook (`fetch` + `ReadableStream`), Tailwind v4, dark mode              |
 | **Delivery**         | reproducible uv + Docker Compose, single-origin nginx proxy, secrets via env                 |
 
 ## 📂 Project structure
@@ -252,9 +269,9 @@ add duplicate questions.
 ```text
 src/rag_agent/        FastAPI app + LangGraph agent
   ├─ agent.py         create_agent + system prompt
-  ├─ tools.py         retrieve_documents (RAG) + web_search (Tavily/DDG)
+  ├─ tools.py         retrieve_documents (RAG) + web_search (Tavily/DDG) + citation numbering
   ├─ streaming.py     astream → SSE event mapping
-  ├─ api.py           /health /ingest /chat/stream /feedback
+  ├─ api.py           /health /auth /ingest /chat/stream /feedback
   ├─ ingest.py        loaders → splitter → Chroma
   └─ config.py,llms.py,embeddings.py,vectorstore.py,schemas.py
 
@@ -271,13 +288,14 @@ docker-compose.yml    backend (uvicorn) + frontend (nginx)
 
 * **`create_agent`, not a hand-rolled `StateGraph`** — the scenario *is* a tool-calling ReAct loop, so the prebuilt agent is the right altitude; it stays fully traceable and streamable.
 * **Tool events come from the `updates` channel, not `messages`** — streamed tool-call *argument* deltas are unreliable, so `tool_start`/`tool_end` are derived from completed node updates while answer text streams from `messages`.
-* **SSE, not WebSockets** — the data flow is one-directional server→client; SSE is simpler and auto-reconnects. The frontend uses `fetch` + `ReadableStream` rather than `EventSource` so it can POST a JSON body.
-* **Reasoning-model care** — the heavy model routes through the OpenAI Responses API; `max_tokens` is left unset so reasoning tokens don't truncate the answer.
-* **Graceful degradation** — web search prefers Tavily but falls back to keyless DuckDuckGo; rate-limit errors surface as a non-fatal event instead of breaking the stream.
+* **SSE, not WebSockets** — the data flow is one-directional server→client, so SSE is simpler. The frontend uses `fetch` + `ReadableStream` rather than `EventSource` so it can POST a JSON body; that means the browser does not automatically reconnect if the stream drops.
+* **Reasoning-model care** — the heavy model is Gemini (via `langchain-google-genai`); `max_tokens` is left unset so reasoning tokens don't truncate the answer.
+* **Per-turn citation numbers** — each chat turn creates a small `SourceCounter` and passes it to the tools through the LangGraph run config, so tools running in the same turn (even in parallel) share one counter while separate requests never do. Numbers are attached to the sources in the backend rather than derived from list position in the UI.
+* **Web-search fallback** — web search uses Tavily when `TAVILY_API_KEY` is set and keyless DuckDuckGo otherwise (chosen at startup, not per request). If a search call fails, for either provider, the tool logs the error on the server and returns a short "temporarily unavailable" message to the agent, which decides how to continue; the stream is not interrupted and no error details reach the client.
 
 ## 🗺️ Roadmap
 
 * Hybrid (dense + BM25) retrieval and a cross-encoder reranking step
 * Token-level streaming citations (highlight sources as they're used)
-* Online evaluation + the in-UI feedback loop wired to `/api/feedback`
-* Auth and per-user document collections
+* Online evaluation and in-UI thumbs up/down wired to `/api/feedback` (the endpoint exists; the UI does not use it yet)
+* Multi-user auth and per-user document collections

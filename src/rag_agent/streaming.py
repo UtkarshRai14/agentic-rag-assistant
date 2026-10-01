@@ -4,6 +4,9 @@ Stream modes used (astream yields ``(mode, chunk)`` tuples for a list):
 - ``messages`` -> assistant token deltas              -> ``token`` events
 - ``updates``  -> per-node results (tool calls/results) -> ``tool_start`` / ``tool_end``
 - ``custom``   -> our retriever/web payloads            -> ``sources`` events
+
+Each turn gets its own ``SourceCounter`` (passed to the tools through the run config)
+so citation numbers keep counting across that turn's tool calls and restart next turn.
 """
 
 from __future__ import annotations
@@ -13,6 +16,8 @@ import logging
 from typing import Any, AsyncIterator
 
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
+
+from rag_agent.tools import SourceCounter
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +39,7 @@ async def agent_event_stream(
     is_disconnected=None,
 ) -> AsyncIterator[dict]:
     """Yield SSE event dicts for a single chat turn."""
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": thread_id, "source_counter": SourceCounter()}}
     seen_tool_starts: set[str] = set()
 
     yield _sse("start", {"thread_id": thread_id})

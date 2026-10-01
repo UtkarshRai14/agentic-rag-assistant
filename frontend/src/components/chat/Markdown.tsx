@@ -96,18 +96,22 @@ function CodeBlock({ code, lang, highlight }: { code: string; lang: string; high
 export const Markdown = memo(function Markdown({
   text,
   highlight = true,
+  citations = true,
 }: {
   text: string;
   highlight?: boolean;
+  citations?: boolean; // false renders [n] as plain text instead of jump-to-source chips
 }) {
+  const linkify = (children: ReactNode) => (citations ? linkifyCitations(children) : children);
+
   return (
     <div className="prose-chat text-sm leading-relaxed">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          p: ({ children }) => <p>{linkifyCitations(children)}</p>,
-          li: ({ children }) => <li>{linkifyCitations(children)}</li>,
-          td: ({ children }) => <td>{linkifyCitations(children)}</td>,
+          p: ({ children }) => <p>{linkify(children)}</p>,
+          li: ({ children }) => <li>{linkify(children)}</li>,
+          td: ({ children }) => <td>{linkify(children)}</td>,
           code: ({ className, children, ...props }) => {
             const match = /language-(\w+)/.exec(className || "");
             const isBlock = "node" in props && match;

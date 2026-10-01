@@ -4,6 +4,7 @@ export type StepStatus = "running" | "done" | "error";
 
 export interface Source {
   id: string;
+  number: number; // citation number the model writes as [n]; unique within one answer
   kind: "document" | "web";
   title: string;
   url?: string;

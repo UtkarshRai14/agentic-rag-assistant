@@ -6,10 +6,12 @@ export function MessageBubble({
   role,
   content,
   streaming = false,
+  citations = true,
 }: {
   role: "user" | "assistant";
   content: string;
   streaming?: boolean;
+  citations?: boolean;
 }) {
   const isUser = role === "user";
   return (
@@ -32,7 +34,7 @@ export function MessageBubble({
           <p className="whitespace-pre-wrap text-sm">{content}</p>
         ) : (
           <>
-            <Markdown text={content} highlight={!streaming} />
+            <Markdown text={content} highlight={!streaming} citations={citations} />
             {streaming && (
               <span className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-pulse rounded-sm bg-accent" />
             )}

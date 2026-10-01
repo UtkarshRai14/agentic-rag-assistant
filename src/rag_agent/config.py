@@ -36,7 +36,6 @@ class Settings(BaseSettings):
     model_fast: str = "gemini-2.5-flash-lite"
     model_heavy: str = "gemini-2.5-flash"
     embedding_model: str = "gemini-embedding-2"
-    reasoning_effort: str = "medium"
 
     # --- storage / retrieval ---
     chroma_dir: str = "./chroma_db"

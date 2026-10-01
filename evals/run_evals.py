@@ -25,6 +25,7 @@ from openevals.prompts import (
 from evals.create_dataset import DATASET_NAME
 from rag_agent.agent import build_agent
 from rag_agent.config import settings
+from rag_agent.tools import SourceCounter
 
 JUDGE_MODEL = f"google_genai:{settings.model_heavy}"
 
@@ -34,7 +35,8 @@ _agent = build_agent()  # no checkpointer: each example is independent
 def target(inputs: dict) -> dict:
     """Invoke the agent and surface both the answer and the retrieved context."""
     result = _agent.invoke(
-        {"messages": [{"role": "user", "content": inputs["question"]}]}
+        {"messages": [{"role": "user", "content": inputs["question"]}]},
+        config={"configurable": {"source_counter": SourceCounter()}},
     )
     answer = result["messages"][-1].text
     context = [

@@ -19,8 +19,8 @@ export function SourcesPanel({ sources }: { sources: Source[] }) {
         <p className="text-xs text-muted">Retrieved documents and web results show up here.</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {sources.map((s, i) => (
-            <SourceCard key={s.id} source={s} index={i + 1} />
+          {sources.map((s) => (
+            <SourceCard key={s.id} source={s} />
           ))}
         </div>
       )}

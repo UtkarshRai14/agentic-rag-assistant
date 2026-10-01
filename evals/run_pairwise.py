@@ -17,7 +17,7 @@ from langsmith.evaluation import evaluate_comparative
 from evals.create_dataset import DATASET_NAME
 from rag_agent.agent import SYSTEM_PROMPT
 from rag_agent.config import settings
-from rag_agent.tools import build_tools
+from rag_agent.tools import SourceCounter, build_tools
 
 JUDGE_MODEL = settings.model_heavy
 
@@ -30,7 +30,10 @@ def _make_target(model_name: str):
     )
 
     def target(inputs: dict) -> dict:
-        result = agent.invoke({"messages": [{"role": "user", "content": inputs["question"]}]})
+        result = agent.invoke(
+            {"messages": [{"role": "user", "content": inputs["question"]}]},
+            config={"configurable": {"source_counter": SourceCounter()}},
+        )
         answer = result["messages"][-1].text
         context = [
             m.content

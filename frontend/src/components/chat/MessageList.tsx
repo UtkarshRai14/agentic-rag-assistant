@@ -40,7 +40,12 @@ export function MessageList({
       ) : (
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           {messages.map((m, i) => (
-            <MessageBubble key={i} role={m.role} content={m.content} />
+            <MessageBubble
+              key={i}
+              role={m.role}
+              content={m.content}
+              citations={i === messages.length - 1} // the Sources panel only shows the latest answer's sources
+            />
           ))}
           {liveAnswer && <MessageBubble role="assistant" content={liveAnswer} streaming />}
           {streaming && !liveAnswer && (

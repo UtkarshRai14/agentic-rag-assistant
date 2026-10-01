@@ -82,10 +82,10 @@ function reducer(s: StreamState, a: Action): StreamState {
         ),
       };
     case "sources": {
-      // de-dup by id
+      // de-dup by id; keep cards in citation order since parallel tools can finish out of order
       const seen = new Set(s.sources.map((x) => x.id));
       const fresh = e.sources.filter((x) => !seen.has(x.id));
-      return { ...s, sources: [...s.sources, ...fresh] };
+      return { ...s, sources: [...s.sources, ...fresh].sort((a, b) => a.number - b.number) };
     }
     case "error":
       return { ...s, status: e.fatal ? "error" : s.status, error: e.message };
@@ -93,7 +93,8 @@ function reducer(s: StreamState, a: Action): StreamState {
       const msgs = s.answer
         ? [...s.messages, { role: "assistant" as const, content: s.answer }]
         : s.messages;
-      return { ...s, status: "done", messages: msgs, answer: "" };
+      // the server sends `end` after a fatal `error` too, so don't overwrite the error status
+      return { ...s, status: s.status === "error" ? "error" : "done", messages: msgs, answer: "" };
     }
     default:
       return s;

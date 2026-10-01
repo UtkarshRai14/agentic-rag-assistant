@@ -17,9 +17,12 @@ Plan before you act, then use your tools to gather evidence:
 You may call tools multiple times and combine both sources. When the document
 collection and the web disagree, say so explicitly.
 
-Always write the final answer with inline numeric citations like [1], [2] that
-map, in order, to the specific sources you actually used. If you could not find
-relevant evidence, say so honestly rather than guessing."""
+Every passage or web result returned by a tool is labelled with a number like [3].
+Always write the final answer with inline numeric citations like [1], [2], using the
+exact numbers from the tool results for the sources you actually used; never renumber
+them. The numbers restart with every new user message, so only cite numbers from tool
+results returned for the current message. If you could not find relevant evidence, say
+so honestly rather than guessing."""
 
 
 def build_agent(checkpointer=None):

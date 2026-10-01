@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import tempfile
@@ -16,7 +17,7 @@ from sse_starlette.sse import EventSourceResponse
 from rag_agent.agent import build_agent
 from rag_agent.auth import AUTH_COOKIE, create_session, require_auth
 from rag_agent.config import settings
-from rag_agent.ingest import ensure_seeded, ingest_paths
+from rag_agent.ingest import SUPPORTED_EXTS, ensure_seeded, ingest_paths
 from rag_agent.schemas import (
     ChatRequest,
     FeedbackRequest,
@@ -101,28 +102,31 @@ async def ingest(files: list[UploadFile] = File(...)) -> IngestResponse:
         )
     tmp_paths: list[str] = []
     names: list[str] = []
-    for f in files:
-        original_name = (f.filename or "upload.txt").replace("\\", "/").split("/")[-1]
-        suffix = "." + original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
-        if suffix not in {".pdf", ".txt", ".md", ".markdown"}:
-            raise HTTPException(status_code=415, detail="Only PDF, TXT, and Markdown files are supported.")
-        content = await f.read(settings.max_upload_bytes + 1)
-        if not content:
-            raise HTTPException(status_code=400, detail="Uploaded files must not be empty.")
-        if len(content) > settings.max_upload_bytes:
-            limit_mb = settings.max_upload_bytes // (1024 * 1024)
-            raise HTTPException(
-                status_code=413,
-                detail=f"Each uploaded file must be {limit_mb} MB or smaller.",
-            )
-        fd, path = tempfile.mkstemp(suffix=suffix)
-        with open(fd, "wb", closefd=True) as out:
-            out.write(content)
-        tmp_paths.append(path)
-        names.append(original_name)
-
     try:
-        added = ingest_paths(tmp_paths)
+        for f in files:
+            original_name = (f.filename or "upload.txt").replace("\\", "/").split("/")[-1]
+            suffix = "." + original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+            if suffix not in SUPPORTED_EXTS:
+                raise HTTPException(
+                    status_code=415, detail="Only PDF, TXT, and Markdown files are supported."
+                )
+            content = await f.read(settings.max_upload_bytes + 1)
+            if not content:
+                raise HTTPException(status_code=400, detail="Uploaded files must not be empty.")
+            if len(content) > settings.max_upload_bytes:
+                limit_mb = settings.max_upload_bytes // (1024 * 1024)
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Each uploaded file must be {limit_mb} MB or smaller.",
+                )
+            fd, path = tempfile.mkstemp(suffix=suffix)
+            tmp_paths.append(path)
+            with open(fd, "wb", closefd=True) as out:
+                out.write(content)
+            names.append(original_name)
+
+        # Embedding is blocking network I/O, so run it off the event loop.
+        added = await asyncio.to_thread(ingest_paths, tmp_paths, names)
     finally:
         for p in tmp_paths:
             try:

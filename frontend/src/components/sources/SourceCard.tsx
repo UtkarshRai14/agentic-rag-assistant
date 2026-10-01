@@ -1,16 +1,16 @@
 import { FileText, Globe, ExternalLink } from "lucide-react";
 import type { Source } from "@/lib/events";
 
-export function SourceCard({ source, index }: { source: Source; index: number }) {
+export function SourceCard({ source }: { source: Source }) {
   const Icon = source.kind === "web" ? Globe : FileText;
   return (
     <article
-      id={`source-idx-${index}`}
+      id={`source-idx-${source.number}`}
       className="scroll-mt-4 rounded-lg border border-border bg-surface-2 p-3 transition-shadow target:ring-2 target:ring-accent"
     >
       <div className="flex items-start gap-2">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-fg">
-          {index}
+          {source.number}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
