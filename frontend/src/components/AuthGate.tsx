@@ -5,9 +5,32 @@ import { cn } from "@/lib/utils";
 
 type Mode = "signin" | "register";
 
+// Set after a successful sign-in or sign-up, so returning visitors start on "Sign in"
+// and first-time visitors start on "Create account".
+const HAS_ACCOUNT_KEY = "rag-assistant:has-account";
+
+function hasSignedInBefore(): boolean {
+  try {
+    return localStorage.getItem(HAS_ACCOUNT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function rememberSignedIn(): void {
+  try {
+    localStorage.setItem(HAS_ACCOUNT_KEY, "1");
+  } catch {
+    // storage unavailable (private mode, blocked): only the default tab is affected
+  }
+}
+
 export function AuthGate({ onAuthenticated }: { onAuthenticated: (user: SessionUser) => void }) {
-  const [mode, setMode] = useState<Mode>("signin");
-  const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [mode, setMode] = useState<Mode>(() => (hasSignedInBefore() ? "signin" : "register"));
+  // Sign-up is offered unless the server explicitly says it is closed. A slow or failed
+  // health check (e.g. a backend waking up) must not hide it; if sign-up really is
+  // closed, the server rejects the request with a clear message.
+  const [registrationOpen, setRegistrationOpen] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -16,8 +39,13 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: (user: SessionU
 
   useEffect(() => {
     fetchHealth()
-      .then((health) => setRegistrationOpen(health.allow_registration))
-      .catch(() => setRegistrationOpen(false));
+      .then((health) => {
+        if (health.allow_registration === false) {
+          setRegistrationOpen(false);
+          setMode("signin");
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const switchMode = (next: Mode) => {
@@ -38,6 +66,7 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: (user: SessionU
     try {
       const user =
         mode === "signin" ? await login(username, password) : await register(username, password);
+      rememberSignedIn();
       onAuthenticated(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -11,7 +11,7 @@ import {
   type Health,
   type SessionUser,
 } from "@/lib/api";
-import { AuthGate } from "@/components/AuthGate";
+import { AuthGate, rememberSignedIn } from "@/components/AuthGate";
 import { AppShell } from "@/components/layout/AppShell";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ActivityTimeline } from "@/components/agent/ActivityTimeline";
@@ -75,7 +75,10 @@ export default function App() {
   const [user, setUser] = useState<SessionUser | null | undefined>(undefined);
 
   useEffect(() => {
-    getSession().then(setUser);
+    getSession().then((sessionUser) => {
+      if (sessionUser) rememberSignedIn();
+      setUser(sessionUser);
+    });
     setUnauthorizedHandler(() => setUser(null));
     return () => setUnauthorizedHandler(null);
   }, []);

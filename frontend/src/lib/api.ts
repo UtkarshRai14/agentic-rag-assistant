@@ -88,6 +88,10 @@ async function postCredentials(
     credentials: "include",
     body: JSON.stringify({ username, password }),
   });
+  if (path === "register" && res.status === 404) {
+    // A backend without the account routes (e.g. an older version still deployed).
+    throw new ApiError(404, "Account creation is not available on the server yet. Try again shortly.");
+  }
   if (!res.ok) {
     throw await apiError(res, path === "login" ? "Sign-in failed" : "Registration failed");
   }
