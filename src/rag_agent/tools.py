@@ -1,7 +1,8 @@
 """Agent tools: document retrieval (RAG) and web search.
 
-Both emit a ``sources`` payload on LangGraph's custom stream channel so the
-frontend can render citation cards in real time. Every source carries a citation
+Document retrieval only searches the collection of the user in the run config
+(``configurable.user_id``). Both tools emit a ``sources`` payload on LangGraph's
+custom stream channel so the frontend can render citation cards in real time. Every source carries a citation
 ``number`` that is unique within a chat turn: the model reads it in the tool
 result and the UI shows the same number on the source card.
 """
@@ -62,10 +63,19 @@ def _emit_sources(tool_name: str, sources: list[dict]) -> None:
 def retrieve_documents(query: str, config: RunnableConfig) -> str:
     """Search the user's private document collection for relevant passages.
 
-    Use this for anything that might be answered by the ingested documents.
+    Use this for anything that might be answered by the documents the user uploaded.
     """
-    retriever = get_vectorstore().as_retriever(search_kwargs={"k": settings.retriever_k})
-    docs = retriever.invoke(query)
+    # The API puts the logged-in user's id in the run config. Without it there is no
+    # collection this request may read, so refuse rather than search anything else.
+    user_id = config.get("configurable", {}).get("user_id")
+    if not user_id:
+        logger.warning("retrieve_documents was called without a user_id; not searching.")
+        return "No document collection is available for this request."
+
+    store = get_vectorstore(user_id)
+    if store._collection.count() == 0:
+        return "The user has not uploaded any documents yet."
+    docs = store.as_retriever(search_kwargs={"k": settings.retriever_k}).invoke(query)
     if not docs:
         return "No relevant passages found in the document collection."
 

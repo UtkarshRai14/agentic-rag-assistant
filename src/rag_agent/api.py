@@ -1,4 +1,8 @@
-"""FastAPI application exposing the LangGraph agent over HTTP + SSE."""
+"""FastAPI application exposing the LangGraph agent over HTTP + SSE.
+
+Every route except health and the auth routes needs a logged-in user, and works
+only on that user's documents and conversations.
+"""
 
 from __future__ import annotations
 
@@ -9,31 +13,45 @@ import tempfile
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Path, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from rag_agent.agent import build_agent
-from rag_agent.auth import AUTH_COOKIE, create_session, require_auth
+from rag_agent.auth import AUTH_COOKIE, clear_session_cookie, current_user, set_session_cookie
 from rag_agent.config import settings
-from rag_agent.ingest import SUPPORTED_EXTS, ensure_seeded, ingest_paths
+from rag_agent.ingest import SUPPORTED_EXTS, ingest_paths
 from rag_agent.schemas import (
     ChatRequest,
+    Credentials,
+    DeleteDocumentResponse,
+    DocumentsResponse,
     FeedbackRequest,
     HealthResponse,
     IngestResponse,
+    SessionResponse,
+    UserOut,
 )
 from rag_agent.streaming import agent_event_stream
-from rag_agent.vectorstore import collection_count
+from rag_agent.users import (
+    User,
+    UsernameTaken,
+    authenticate,
+    create_session,
+    create_user,
+    delete_session,
+    init_db,
+)
+from rag_agent.vectorstore import delete_document, list_documents
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Auto-seed the vector store with the sample docs on first boot.
-    ensure_seeded()
+    # Create the users database if this is the first boot.
+    init_db()
 
     # Open the async checkpointer for the whole app lifetime.
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -48,7 +66,7 @@ app = FastAPI(title="Agentic RAG Assistant", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type", "Accept"],
     allow_credentials=True,
 )
@@ -63,38 +81,67 @@ async def health() -> HealthResponse:
         embedding_model=settings.embedding_model,
         web_backend=settings.web_backend,
         langsmith_tracing=settings.langsmith_tracing,
-        documents_indexed=collection_count(),
+        allow_registration=settings.allow_registration,
     )
 
 
-@app.post("/api/auth/login")
-async def login(request: Request) -> JSONResponse:
-    body = await request.json()
-    password = body.get("password") if isinstance(body, dict) else None
-    if not settings.app_auth_password or not settings.auth_secret:
-        raise HTTPException(status_code=503, detail="Authentication is not configured.")
-    if not isinstance(password, str) or password != settings.app_auth_password:
-        raise HTTPException(status_code=401, detail="Invalid credentials.")
-    response = JSONResponse({"ok": True})
-    response.set_cookie(
-        AUTH_COOKIE,
-        create_session(),
-        httponly=True,
-        secure=settings.auth_cookie_secure,
-        samesite="lax",
-        max_age=60 * 60 * 24,
-    )
+# --- auth -----------------------------------------------------------------------
+# The auth routes are plain functions, so FastAPI runs them in a worker thread:
+# password hashing is deliberately slow and must not block the event loop.
+
+
+def _session_response(user: User, status_code: int = 200) -> JSONResponse:
+    """Start a new session for ``user`` and return it as the response cookie."""
+    body = SessionResponse(authenticated=True, user=UserOut(username=user.username))
+    response = JSONResponse(body.model_dump(), status_code=status_code)
+    set_session_cookie(response, create_session(user.id))
     return response
 
 
-@app.get("/api/auth/session")
-async def session(request: Request) -> dict:
-    require_auth(request)
-    return {"authenticated": True}
+@app.post("/api/auth/register", status_code=201, response_model=SessionResponse)
+def register(credentials: Credentials) -> JSONResponse:
+    if not settings.allow_registration:
+        raise HTTPException(
+            status_code=403, detail="Registration is disabled. Ask an administrator for an account."
+        )
+    try:
+        user = create_user(credentials.username, credentials.password)
+    except UsernameTaken as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return _session_response(user, status_code=201)
 
 
-@app.post("/api/ingest", response_model=IngestResponse, dependencies=[Depends(require_auth)])
-async def ingest(files: list[UploadFile] = File(...)) -> IngestResponse:
+@app.post("/api/auth/login", response_model=SessionResponse)
+def login(credentials: Credentials) -> JSONResponse:
+    user = authenticate(credentials.username, credentials.password)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    return _session_response(user)
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request) -> JSONResponse:
+    delete_session(request.cookies.get(AUTH_COOKIE))
+    response = JSONResponse({"ok": True})
+    clear_session_cookie(response)
+    return response
+
+
+@app.get("/api/auth/session", response_model=SessionResponse)
+def session(user: User = Depends(current_user)) -> SessionResponse:
+    return SessionResponse(authenticated=True, user=UserOut(username=user.username))
+
+
+# --- documents ------------------------------------------------------------------
+
+
+@app.post("/api/ingest", response_model=IngestResponse)
+async def ingest(
+    files: list[UploadFile] = File(...),
+    user: User = Depends(current_user),
+) -> IngestResponse:
     if not files or len(files) > settings.max_upload_count:
         raise HTTPException(
             status_code=413,
@@ -126,7 +173,7 @@ async def ingest(files: list[UploadFile] = File(...)) -> IngestResponse:
             names.append(original_name)
 
         # Embedding is blocking network I/O, so run it off the event loop.
-        added = await asyncio.to_thread(ingest_paths, tmp_paths, names)
+        added = await asyncio.to_thread(ingest_paths, user.id, tmp_paths, names)
     finally:
         for p in tmp_paths:
             try:
@@ -137,8 +184,32 @@ async def ingest(files: list[UploadFile] = File(...)) -> IngestResponse:
     return IngestResponse(chunks_added=added, files=names)
 
 
-@app.post("/api/chat/stream", dependencies=[Depends(require_auth)])
-async def chat_stream(req: ChatRequest, request: Request) -> EventSourceResponse:
+@app.get("/api/documents", response_model=DocumentsResponse)
+async def documents(user: User = Depends(current_user)) -> DocumentsResponse:
+    docs = await asyncio.to_thread(list_documents, user.id)
+    return DocumentsResponse(documents=docs, total_chunks=sum(d["chunks"] for d in docs))
+
+
+@app.delete("/api/documents/{document_id}", response_model=DeleteDocumentResponse)
+async def remove_document(
+    document_id: str = Path(..., pattern=r"^[0-9a-f]{64}$"),
+    user: User = Depends(current_user),
+) -> DeleteDocumentResponse:
+    deleted = await asyncio.to_thread(delete_document, user.id, document_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return DeleteDocumentResponse(deleted_chunks=deleted)
+
+
+# --- chat -------------------------------------------------------------------------
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(
+    req: ChatRequest,
+    request: Request,
+    user: User = Depends(current_user),
+) -> EventSourceResponse:
     thread_id = req.thread_id or str(uuid.uuid4())
     agent = request.app.state.agent
 
@@ -146,6 +217,7 @@ async def chat_stream(req: ChatRequest, request: Request) -> EventSourceResponse
         agent,
         message=req.message,
         thread_id=thread_id,
+        user_id=user.id,
         is_disconnected=request.is_disconnected,
     )
     return EventSourceResponse(
@@ -154,7 +226,7 @@ async def chat_stream(req: ChatRequest, request: Request) -> EventSourceResponse
     )
 
 
-@app.post("/api/feedback", dependencies=[Depends(require_auth)])
+@app.post("/api/feedback", dependencies=[Depends(current_user)])
 async def feedback(req: FeedbackRequest) -> dict:
     """Forward end-user thumbs up/down into LangSmith."""
     try:

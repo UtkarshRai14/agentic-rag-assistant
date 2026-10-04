@@ -6,8 +6,21 @@ from langchain_core.documents import Document
 from rag_agent.config import settings
 from rag_agent.tools import SourceCounter, _build_web_search_tool, retrieve_documents
 
+USER = "a" * 32
+
+
+class FakeCollection:
+    def __init__(self, count: int) -> None:
+        self._count = count
+
+    def count(self) -> int:
+        return self._count
+
 
 class FakeStore:
+    def __init__(self, count: int = 2) -> None:
+        self._collection = FakeCollection(count)
+
     def as_retriever(self, search_kwargs: dict):
         return self
 
@@ -44,15 +57,27 @@ def use_tavily(monkeypatch, provider) -> None:
     monkeypatch.setattr("langchain_tavily.TavilySearch", provider)
 
 
+def use_fake_store(monkeypatch, store: FakeStore | None = None) -> list[str]:
+    """Serve ``store`` for every user and record which users' stores were opened."""
+    opened: list[str] = []
+
+    def get_vectorstore(user_id: str) -> FakeStore:
+        opened.append(user_id)
+        return store or FakeStore()
+
+    monkeypatch.setattr("rag_agent.tools.get_vectorstore", get_vectorstore)
+    return opened
+
+
 def test_source_numbers_continue_across_tool_calls(monkeypatch):
     emitted: list[list[dict]] = []
     monkeypatch.setattr(
         "rag_agent.tools._emit_sources", lambda tool_name, sources: emitted.append(sources)
     )
-    monkeypatch.setattr("rag_agent.tools.get_vectorstore", FakeStore)
+    use_fake_store(monkeypatch)
     use_tavily(monkeypatch, FakeTavily)
     web_search = _build_web_search_tool()
-    config = {"configurable": {"source_counter": SourceCounter()}}
+    config = {"configurable": {"user_id": USER, "source_counter": SourceCounter()}}
 
     texts = [
         retrieve_documents.invoke({"query": "a"}, config=config),
@@ -70,8 +95,28 @@ def test_source_numbers_continue_across_tool_calls(monkeypatch):
 
 
 def test_tools_still_work_without_a_turn_counter(monkeypatch):
-    monkeypatch.setattr("rag_agent.tools.get_vectorstore", FakeStore)
-    assert retrieve_documents.invoke({"query": "a"}).startswith("[1]")
+    use_fake_store(monkeypatch)
+    result = retrieve_documents.invoke({"query": "a"}, config={"configurable": {"user_id": USER}})
+    assert result.startswith("[1]")
+
+
+def test_retrieval_opens_only_the_configured_users_store(monkeypatch):
+    opened = use_fake_store(monkeypatch)
+    retrieve_documents.invoke({"query": "a"}, config={"configurable": {"user_id": USER}})
+    assert opened == [USER]
+
+
+def test_retrieval_without_a_user_searches_nothing(monkeypatch):
+    opened = use_fake_store(monkeypatch)
+    result = retrieve_documents.invoke({"query": "a"})
+    assert result == "No document collection is available for this request."
+    assert opened == []
+
+
+def test_retrieval_with_an_empty_collection(monkeypatch):
+    use_fake_store(monkeypatch, FakeStore(count=0))
+    result = retrieve_documents.invoke({"query": "a"}, config={"configurable": {"user_id": USER}})
+    assert result == "The user has not uploaded any documents yet."
 
 
 def test_source_counter_hands_out_unique_numbers_across_threads():

@@ -7,6 +7,11 @@ Stream modes used (astream yields ``(mode, chunk)`` tuples for a list):
 
 Each turn gets its own ``SourceCounter`` (passed to the tools through the run config)
 so citation numbers keep counting across that turn's tool calls and restart next turn.
+
+Every turn belongs to one user. The run config carries their ``user_id`` (the
+retrieval tool only searches that user's documents), and the conversation memory
+is stored under a thread key that includes the user id, so a user can never load
+or continue another user's conversation, even with the same ``thread_id``.
 """
 
 from __future__ import annotations
@@ -32,14 +37,28 @@ def _result_preview(content: Any, limit: int = 500) -> str:
     return text[:limit]
 
 
+def scoped_thread_id(user_id: str, thread_id: str) -> str:
+    """The checkpointer key for a user's thread (the client only ever sees ``thread_id``)."""
+    return f"{user_id}:{thread_id}"
+
+
 async def agent_event_stream(
     agent,
     message: str,
     thread_id: str,
+    user_id: str,
     is_disconnected=None,
 ) -> AsyncIterator[dict]:
-    """Yield SSE event dicts for a single chat turn."""
-    config = {"configurable": {"thread_id": thread_id, "source_counter": SourceCounter()}}
+    """Yield SSE event dicts for a single chat turn of ``user_id``."""
+    if not user_id:
+        raise ValueError("A chat turn needs the id of the user it runs for.")
+    config = {
+        "configurable": {
+            "thread_id": scoped_thread_id(user_id, thread_id),
+            "user_id": user_id,
+            "source_counter": SourceCounter(),
+        }
+    }
     seen_tool_starts: set[str] = set()
 
     yield _sse("start", {"thread_id": thread_id})

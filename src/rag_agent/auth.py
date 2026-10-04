@@ -1,48 +1,51 @@
-"""Small signed-cookie authentication for the single-user deployment."""
+"""Session-cookie authentication for the API.
+
+The cookie holds a random session token (see ``rag_agent.users``). Every protected
+route depends on ``current_user``, and everything a request reads or writes is
+scoped to that user.
+"""
 
 from __future__ import annotations
 
-import hashlib
-import hmac
-import time
-
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, Request, Response, status
 
 from rag_agent.config import settings
+from rag_agent.users import SESSION_TTL_SECONDS, User, user_for_session
 
 AUTH_COOKIE = "rag_session"
-SESSION_TTL_SECONDS = 60 * 60 * 24
 
 
-def _signature(timestamp: str) -> str:
-    return hmac.new(
-        settings.auth_secret.encode(), timestamp.encode(), hashlib.sha256
-    ).hexdigest()
+def set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        AUTH_COOKIE,
+        token,
+        max_age=SESSION_TTL_SECONDS,
+        path="/",
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+    )
 
 
-def create_session() -> str:
-    timestamp = str(int(time.time()))
-    return f"{timestamp}.{_signature(timestamp)}"
+def clear_session_cookie(response: Response) -> None:
+    response.delete_cookie(
+        AUTH_COOKIE,
+        path="/",
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+    )
 
 
-def valid_session(value: str | None) -> bool:
-    if not settings.auth_secret or not value:
-        return False
-    try:
-        timestamp, signature = value.split(".", 1)
-        issued = int(timestamp)
-    except (ValueError, AttributeError):
-        return False
-    if time.time() - issued > SESSION_TTL_SECONDS or issued > time.time() + 30:
-        return False
-    return hmac.compare_digest(signature, _signature(timestamp))
+def current_user(request: Request) -> User:
+    """FastAPI dependency: the logged-in user, or 401.
 
-
-def require_auth(request: Request) -> None:
-    if not settings.app_auth_password or not settings.auth_secret:
+    It is a plain function, so FastAPI runs it in a worker thread and the SQLite
+    lookup does not block the event loop.
+    """
+    user = user_for_session(request.cookies.get(AUTH_COOKIE))
+    if user is None:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication is not configured.",
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
         )
-    if not valid_session(request.cookies.get(AUTH_COOKIE)):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    return user

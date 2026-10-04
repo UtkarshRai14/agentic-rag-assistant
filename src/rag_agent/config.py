@@ -21,8 +21,10 @@ class Settings(BaseSettings):
     # --- credentials ---
     google_api_key: str = ""
     tavily_api_key: str | None = None
-    app_auth_password: str = ""
-    auth_secret: str = ""
+
+    # --- user accounts / sessions ---
+    users_db_path: str = "./users.sqlite"
+    allow_registration: bool = True
     auth_cookie_secure: bool = False
     frontend_origin: str = "http://localhost:8080"
 
@@ -39,6 +41,7 @@ class Settings(BaseSettings):
 
     # --- storage / retrieval ---
     chroma_dir: str = "./chroma_db"
+    # Prefix of the per-user collections, which are named "<prefix>-user-<user id>".
     chroma_collection: str = "documents"
     sqlite_path: str = "./memory.sqlite"
     retriever_k: int = 4
