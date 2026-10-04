@@ -53,6 +53,10 @@ async def lifespan(app: FastAPI):
     # Create the users database if this is the first boot.
     init_db()
 
+    # SQLite does not create missing folders, and nothing else creates this one at
+    # startup, so make sure the conversation memory file's folder exists.
+    os.makedirs(os.path.dirname(os.path.abspath(settings.sqlite_path)), exist_ok=True)
+
     # Open the async checkpointer for the whole app lifetime.
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 

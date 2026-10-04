@@ -17,6 +17,24 @@ def user_id(username: str) -> str:
     return users.authenticate(username, PASSWORD).id
 
 
+# --- startup ----------------------------------------------------------------------
+
+
+def test_startup_creates_missing_state_folders(monkeypatch, tmp_path):
+    # e.g. SQLITE_PATH=/app/state/memory.sqlite on a host where /app/state does not exist yet
+    memory = tmp_path / "state" / "memory.sqlite"
+    accounts = tmp_path / "other" / "users.sqlite"
+    monkeypatch.setattr(settings, "sqlite_path", str(memory))
+    monkeypatch.setattr(settings, "users_db_path", str(accounts))
+    monkeypatch.setattr("rag_agent.api.build_agent", lambda checkpointer: object())
+
+    with TestClient(app) as client:  # runs the lifespan startup
+        assert client.get("/api/health").status_code == 200
+
+    assert memory.exists()
+    assert accounts.exists()
+
+
 # --- health / auth ----------------------------------------------------------------
 
 
