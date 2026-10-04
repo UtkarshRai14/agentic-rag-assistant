@@ -9,8 +9,19 @@ from langsmith import Client
 
 # Loads .env into os.environ so LANGSMITH_* is available.
 from rag_agent.config import settings  # noqa: F401
+from rag_agent.ingest import ingest_directory
 
 DATASET_NAME = "resume-demo-rag-qa"
+
+# The evaluation runs search a private document collection of their own, holding the
+# sample Aurora docs. Real user ids are 32-character hex strings, so this id can never
+# belong to a user, and the API never reads this collection.
+EVAL_USER_ID = "eval"
+
+
+def seed_eval_documents() -> int:
+    """Index the sample docs into the evaluation collection (already-indexed files are skipped)."""
+    return ingest_directory(EVAL_USER_ID)
 
 # Question / reference-answer pairs. Most are answerable from the sample Aurora
 # docs (doc-RAG); a couple require general/world knowledge (web search).

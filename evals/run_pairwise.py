@@ -14,7 +14,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langsmith import Client
 from langsmith.evaluation import evaluate_comparative
 
-from evals.create_dataset import DATASET_NAME
+from evals.create_dataset import DATASET_NAME, EVAL_USER_ID, seed_eval_documents
 from rag_agent.agent import SYSTEM_PROMPT
 from rag_agent.config import settings
 from rag_agent.tools import SourceCounter, build_tools
@@ -32,7 +32,9 @@ def _make_target(model_name: str):
     def target(inputs: dict) -> dict:
         result = agent.invoke(
             {"messages": [{"role": "user", "content": inputs["question"]}]},
-            config={"configurable": {"source_counter": SourceCounter()}},
+            config={
+                "configurable": {"user_id": EVAL_USER_ID, "source_counter": SourceCounter()}
+            },
         )
         answer = result["messages"][-1].text
         context = [
@@ -72,6 +74,7 @@ def ranked_preference(runs: list, example) -> dict:
 
 
 def main() -> None:
+    seed_eval_documents()
     client = Client()
 
     heavy = client.evaluate(

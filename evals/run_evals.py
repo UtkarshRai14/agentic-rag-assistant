@@ -22,7 +22,7 @@ from openevals.prompts import (
     RAG_RETRIEVAL_RELEVANCE_PROMPT,
 )
 
-from evals.create_dataset import DATASET_NAME
+from evals.create_dataset import DATASET_NAME, EVAL_USER_ID, seed_eval_documents
 from rag_agent.agent import build_agent
 from rag_agent.config import settings
 from rag_agent.tools import SourceCounter
@@ -36,7 +36,7 @@ def target(inputs: dict) -> dict:
     """Invoke the agent and surface both the answer and the retrieved context."""
     result = _agent.invoke(
         {"messages": [{"role": "user", "content": inputs["question"]}]},
-        config={"configurable": {"source_counter": SourceCounter()}},
+        config={"configurable": {"user_id": EVAL_USER_ID, "source_counter": SourceCounter()}},
     )
     answer = result["messages"][-1].text
     context = [
@@ -89,6 +89,7 @@ def cites_sources(inputs: dict, outputs: dict) -> dict:
 
 
 def main() -> None:
+    seed_eval_documents()
     client = Client()
     results = client.evaluate(
         target,
