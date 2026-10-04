@@ -1,17 +1,25 @@
 import type { ReactNode } from "react";
+import { LogOut, UserRound } from "lucide-react";
+import type { DocumentInfo } from "@/lib/api";
 import { ThemeToggle } from "./ThemeToggle";
 import { UploadDialog } from "@/components/upload/UploadDialog";
 
 export function AppShell({
+  username,
+  onLogout,
   health,
+  documents,
+  onDocumentsChanged,
   chat,
   inspector,
-  onIngested,
 }: {
+  username: string;
+  onLogout: () => void;
   health?: ReactNode;
+  documents: DocumentInfo[];
+  onDocumentsChanged: () => void;
   chat: ReactNode;
   inspector: ReactNode;
-  onIngested?: (chunks: number) => void;
 }) {
   return (
     <div className="flex h-full flex-col">
@@ -23,8 +31,23 @@ export function AppShell({
         </div>
         <div className="ml-auto flex items-center gap-2">
           {health}
-          <UploadDialog onIngested={onIngested} />
+          <UploadDialog documents={documents} onChanged={onDocumentsChanged} />
           <ThemeToggle />
+          <span
+            className="hidden max-w-[10rem] items-center gap-1 truncate text-sm text-muted md:inline-flex"
+            title={`Signed in as ${username}`}
+          >
+            <UserRound className="h-4 w-4 shrink-0" />
+            <span className="truncate">{username}</span>
+          </span>
+          <button
+            onClick={onLogout}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-fg"
+            title="Sign out"
+            aria-label="Sign out"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </header>
 

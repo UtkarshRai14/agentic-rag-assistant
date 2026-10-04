@@ -33,8 +33,8 @@ export function MessageList({
           <Sparkles className="mx-auto mb-3 h-8 w-8 text-accent" />
           <h2 className="text-lg font-semibold">Ask the research agent</h2>
           <p className="mt-2 text-sm text-muted">
-            It searches your uploaded documents and the web, then answers with
-            citations. Try asking about the Aurora platform, or upload your own docs.
+            It searches the documents you upload and the web, then answers with
+            citations. Your documents are private to your account: use Upload docs to add some.
           </p>
         </div>
       ) : (

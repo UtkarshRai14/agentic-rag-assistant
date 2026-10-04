@@ -1,6 +1,6 @@
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import { parseSSEStream } from "@/lib/sse";
-import { API_BASE_URL } from "@/lib/api";
+import { authFetch } from "@/lib/api";
 import type { AgentEvent, Source, StepStatus } from "@/lib/events";
 
 export interface TimelineNode {
@@ -106,6 +106,9 @@ export function useAgentStream() {
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<string | undefined>(undefined);
 
+  // Stop any in-flight answer when the chat goes away (e.g. on sign-out).
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const send = useCallback(async (message: string) => {
     abortRef.current?.abort();
     const ac = new AbortController();
@@ -113,12 +116,11 @@ export function useAgentStream() {
     dispatch({ kind: "user", text: message });
 
     try {
-      const res = await fetch(`${API_BASE_URL}/chat/stream`, {
+      const res = await authFetch("/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify({ message, thread_id: threadRef.current }),
         signal: ac.signal,
-        credentials: "include",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

@@ -1,20 +1,30 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Database, Activity } from "lucide-react";
 import { useAgentStream } from "@/hooks/useAgentStream";
-import { checkSession, fetchHealth, type Health } from "@/lib/api";
+import {
+  fetchHealth,
+  getSession,
+  listDocuments,
+  logout,
+  setUnauthorizedHandler,
+  type DocumentList,
+  type Health,
+  type SessionUser,
+} from "@/lib/api";
 import { AuthGate } from "@/components/AuthGate";
 import { AppShell } from "@/components/layout/AppShell";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ActivityTimeline } from "@/components/agent/ActivityTimeline";
 import { SourcesPanel } from "@/components/sources/SourcesPanel";
 
-function HealthBadge({ health }: { health: Health | null }) {
+function HealthBadge({ health, library }: { health: Health | null; library: DocumentList | null }) {
   if (!health) return null;
+  const docs = library?.documents.length ?? 0;
   return (
     <div className="hidden items-center gap-3 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-muted sm:flex">
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center gap-1" title="Documents in your private library">
         <Database className="h-3.5 w-3.5" />
-        {health.documents_indexed} chunks
+        {docs} {docs === 1 ? "doc" : "docs"}
       </span>
       <span className="inline-flex items-center gap-1">
         <Activity className="h-3.5 w-3.5" />
@@ -27,27 +37,28 @@ function HealthBadge({ health }: { health: Health | null }) {
   );
 }
 
-export default function App() {
+/** Everything a signed-in user sees. Remounted per user, so no state leaks between accounts. */
+function Workspace({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const stream = useAgentStream();
   const [health, setHealth] = useState<Health | null>(null);
-  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const [library, setLibrary] = useState<DocumentList | null>(null);
 
-  const refreshHealth = () => fetchHealth().then(setHealth).catch(() => {});
-  useEffect(() => {
-    checkSession().then(setAuthenticated);
+  const refreshLibrary = useCallback(() => {
+    listDocuments().then(setLibrary).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (authenticated) refreshHealth();
-  }, [authenticated]);
-
-  if (authenticated === null) return null;
-  if (!authenticated) return <AuthGate onAuthenticated={() => setAuthenticated(true)} />;
+    fetchHealth().then(setHealth).catch(() => {});
+    refreshLibrary();
+  }, [refreshLibrary]);
 
   return (
     <AppShell
-      health={<HealthBadge health={health} />}
-      onIngested={refreshHealth}
+      username={user.username}
+      onLogout={onLogout}
+      health={<HealthBadge health={health} library={library} />}
+      documents={library?.documents ?? []}
+      onDocumentsChanged={refreshLibrary}
       chat={<ChatPanel stream={stream} />}
       inspector={
         <>
@@ -57,4 +68,28 @@ export default function App() {
       }
     />
   );
+}
+
+export default function App() {
+  // undefined = still checking the session, null = signed out
+  const [user, setUser] = useState<SessionUser | null | undefined>(undefined);
+
+  useEffect(() => {
+    getSession().then(setUser);
+    setUnauthorizedHandler(() => setUser(null));
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logout();
+    } catch {
+      // the session cookie may already be gone; signing out locally is what matters
+    }
+    setUser(null);
+  }, []);
+
+  if (user === undefined) return null;
+  if (user === null) return <AuthGate onAuthenticated={setUser} />;
+  return <Workspace key={user.username} user={user} onLogout={handleLogout} />;
 }
