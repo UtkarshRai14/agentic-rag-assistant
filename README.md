@@ -22,19 +22,21 @@
 
 ---
 
-A single-user demo of an **agentic RAG** system built on **LangChain + LangGraph + LangSmith**. A LangGraph agent plans, calls tools (vector retrieval over your documents and live web search), and synthesizes an answer with inline citations. Both the answer tokens **and** the agent's intermediate steps stream to a React 19 UI over Server-Sent Events, while every run is automatically traced and offline-evaluated in LangSmith.
+A multi-user demo of an **agentic RAG** system built on **LangChain + LangGraph + LangSmith**. A LangGraph agent plans, calls tools (vector retrieval over your documents and live web search), and synthesizes an answer with inline citations. Both the answer tokens **and** the agent's intermediate steps stream to a React 19 UI over Server-Sent Events, while every run is automatically traced and offline-evaluated in LangSmith.
 
 ## ✨ Highlights
 
 * 🤖 **Agentic loop, not a fixed chain** — a LangGraph `create_agent` ReAct agent decides when to retrieve documents, when to search the web, and when it has enough to answer.
 * 📚 **Dual retrieval** — RAG over a persisted Chroma vector store **+** live web search (Tavily, with a keyless DuckDuckGo fallback).
+* 🔐 **Accounts with private documents** — every user signs in, and retrieval only ever searches the documents that user uploaded (one Chroma collection per user).
 * ⚡ **Streams tokens *and* steps** — a custom multi-channel `astream` → SSE bridge surfaces token deltas, tool start/stop, and retrieved sources in real time.
 * 🪄 **SOTA UI** — React 19 + Vite + Tailwind v4: live agent-activity timeline, clickable `[n]` citation chips, drag-and-drop ingestion, markdown + syntax-highlighted answers, dark mode.
 * 🔬 **Real evaluation suite** — a LangSmith dataset scored by LLM-as-judge correctness, RAG groundedness & retrieval-relevance, and a citation heuristic, plus a pairwise model comparison.
 * 🐳 **One command to run** — `docker compose up` brings up the backend and a single-origin nginx-served frontend.
 
-This is a single-user/private deployment. The document collection and conversation memory are stored in
-the application's local persistent storage; this project does not provide multi-user isolation.
+Every user has to sign in. Each account has its own private document library and its own conversation
+memory: the agent's `retrieve_documents` tool only searches the signed-in user's documents, and one user can
+never see, search, delete or continue another user's documents or conversations.
 
 ## 🖼️ Screenshots
 
@@ -52,9 +54,10 @@ flowchart LR
     FE -- "POST /api/chat/stream" --> API[FastAPI]
     API == "SSE: tokens · steps · sources" ==> FE
     API --> AG["LangGraph agent<br/>(create_agent)"]
-    AG -->|retrieve_documents| VS[("Chroma<br/>vector store")]
+    AG -->|"retrieve_documents<br/>(signed-in user only)"| VS[("Chroma<br/>one collection per user")]
     AG -->|web_search| WEB[("Tavily / DuckDuckGo")]
-    AG --- MEM[("AsyncSqliteSaver<br/>thread memory")]
+    AG --- MEM[("AsyncSqliteSaver<br/>per-user thread memory")]
+    API --- USERS[("SQLite<br/>users · sessions")]
     EMB["Gemini<br/>gemini-embedding-2"] --- VS
     AG -. auto-traced .-> LS[("LangSmith<br/>traces · datasets · evals")]
 ```
@@ -129,7 +132,8 @@ cp .env.example .env
 ```
 
 Fill in the required environment variables, including `GOOGLE_API_KEY`. `TAVILY_API_KEY` and the LangSmith variables are optional.
-Set `APP_AUTH_PASSWORD` and a long random `AUTH_SECRET` for the single-user login. Keep `AUTH_COOKIE_SECURE=false`
+Users create their own accounts on the sign-in screen (set `ALLOW_REGISTRATION=false` to turn that off and
+create accounts with `python -m rag_agent.users create <username>` instead). Keep `AUTH_COOKIE_SECURE=false`
 for local HTTP development and set it to `true` behind HTTPS. `FRONTEND_ORIGIN` must match the browser origin
 (the Docker frontend defaults to `http://localhost:8080`).
 
@@ -147,15 +151,19 @@ docker compose down
 The frontend container serves the built UI and proxies `/api` to the backend. The backend still restricts CORS
 to `FRONTEND_ORIGIN` for direct browser access.
 
-Uploads are limited to 10 PDF/TXT/Markdown files per request and 10 MiB per file. Documents with the same
-content are indexed only once (SHA-256 content hash), including identical files inside one upload.
-Each document's source name is its original filename (Chroma data created by an older version keeps the
-names it was indexed with until it is rebuilt).
+Uploads are limited to 10 PDF/TXT/Markdown files per request and 10 MiB per file. Within one user's library,
+documents with the same content are indexed only once (SHA-256 content hash), including identical files inside
+one upload; two users can each upload the same file. Each document's source name is its original filename.
+Users can see and remove their documents in the **Upload docs** dialog.
 
-Chroma and SQLite are persisted in the Docker `state` volume. Keep that volume (or the equivalent local
-directories) when upgrading or restarting the application; ephemeral/serverless deployments can lose the
-document index and conversation memory. The current design is intended for one application instance and
-one authenticated user, not horizontal scaling or multi-user isolation.
+Chroma and both SQLite files (accounts and conversation memory) are persisted in the Docker `state` volume.
+Keep that volume (or the equivalent local files) when upgrading or restarting the application;
+ephemeral/serverless deployments can lose accounts, documents and conversation memory. The design is intended
+for one application instance (SQLite and local Chroma), not horizontal scaling.
+
+**Upgrading from the single-user version:** the old shared Chroma collection (named `documents`) is no longer
+searched, and conversations stored under the old thread ids can no longer be opened. Users re-upload the
+documents they need into their own library. `APP_AUTH_PASSWORD` and `AUTH_SECRET` are no longer used.
 
 ### Local dev
 
@@ -168,7 +176,9 @@ uv run uvicorn rag_agent.api:app --reload          # :8000
 cd frontend && npm install && npm run dev          # :5173, proxies /api → :8000
 ```
 
-On first boot the backend ingests `data/sample_docs/` (a fictional "Aurora" analytics platform) into a persisted Chroma store. Add your own PDF/TXT/Markdown via the **Upload docs** button.
+Open the UI, create an account, and add your own PDF/TXT/Markdown via the **Upload docs** button. Nothing is
+pre-loaded into a new account; to try the demo corpus, upload the files in `data/sample_docs/` (a fictional
+"Aurora" analytics platform).
 
 ## ⚙️ Configuration
 
@@ -178,8 +188,8 @@ On first boot the backend ingests `data/sample_docs/` (a fictional "Aurora" anal
 | Variable              | Required | Default                           | Purpose                                                       |
 | --------------------- | -------- | --------------------------------- | ------------------------------------------------------------- |
 | `GOOGLE_API_KEY`      | ✅        | —                                 | Gemini LLMs + embeddings                                      |
-| `APP_AUTH_PASSWORD`   | ✅        | —                                 | Single-user application password                              |
-| `AUTH_SECRET`         | ✅        | —                                 | Secret used to sign the HttpOnly session cookie               |
+| `ALLOW_REGISTRATION`  | ➖        | `true`                            | Let people create accounts on the sign-in screen              |
+| `USERS_DB_PATH`       | ➖        | `./users.sqlite`                  | Accounts and sessions database (`/app/state/users.sqlite` in Docker Compose) |
 | `AUTH_COOKIE_SECURE`  | ➖        | `false`                           | Set `true` behind HTTPS so the session cookie is `Secure`     |
 | `FRONTEND_ORIGIN`     | ➖        | `http://localhost:8080`           | Allowed browser origin (CORS)                                 |
 | `TAVILY_API_KEY`      | ➖        | —                                 | Web search (uses keyless DuckDuckGo if unset)                 |
@@ -191,9 +201,9 @@ On first boot the backend ingests `data/sample_docs/` (a fictional "Aurora" anal
 | `MODEL_HEAVY`         | ➖        | `gemini-2.5-flash`                | Agent planning / answer synthesis model                       |
 | `EMBEDDING_MODEL`     | ➖        | `gemini-embedding-2`              | Embeddings                                                    |
 | `CHROMA_DIR`          | ➖        | `./chroma_db`                     | Chroma persistence directory (`/app/state/chroma_db` in Docker Compose) |
-| `CHROMA_COLLECTION`   | ➖        | `documents`                       | Chroma collection name                                        |
+| `CHROMA_COLLECTION`   | ➖        | `documents`                       | Prefix of the per-user collections (`<prefix>-user-<user id>`) |
 | `SQLITE_PATH`         | ➖        | `./memory.sqlite`                 | Conversation memory file (`/app/state/memory.sqlite` in Docker Compose) |
-| `SAMPLE_DOCS_DIR`     | ➖        | `./data/sample_docs`              | Documents ingested on first boot when the index is empty      |
+| `SAMPLE_DOCS_DIR`     | ➖        | `./data/sample_docs`              | Documents the evaluation scripts index into their own collection |
 | `RETRIEVER_K`         | ➖        | `4`                               | Chunks retrieved per query                                    |
 | `MAX_UPLOAD_BYTES`    | ➖        | `10485760`                        | Maximum bytes per uploaded file                               |
 | `MAX_UPLOAD_COUNT`    | ➖        | `10`                              | Maximum files per upload request                              |
@@ -205,19 +215,26 @@ On first boot the backend ingests `data/sample_docs/` (a fictional "Aurora" anal
 
 | Method | Path               | Description                                            |
 | ------ | ------------------ | ------------------------------------------------------ |
-| `GET`  | `/api/health`      | models, web backend, tracing flag, indexed-chunk count |
-| `POST` | `/api/auth/login`  | establish the single-user HttpOnly session cookie     |
-| `GET`  | `/api/auth/session` | `200` if the session cookie is valid, `401` otherwise |
-| `POST` | `/api/ingest`      | authenticated multipart upload → `{ chunks_added, files }` |
+| `GET`  | `/api/health`      | models, web backend, tracing flag, whether sign-up is open |
+| `POST` | `/api/auth/register` | create an account `{ username, password }` and sign in (`409` if the name is taken) |
+| `POST` | `/api/auth/login`  | sign in `{ username, password }` → HttpOnly session cookie |
+| `POST` | `/api/auth/logout` | end the session (the old cookie stops working)         |
+| `GET`  | `/api/auth/session` | `{ authenticated, user }` if the session is valid, `401` otherwise |
+| `POST` | `/api/ingest`      | authenticated multipart upload into your library → `{ chunks_added, files }` |
+| `GET`  | `/api/documents`   | your documents → `{ documents: [{ id, name, chunks, uploaded_at }], total_chunks }` |
+| `DELETE` | `/api/documents/{id}` | remove one of your documents (`404` if it is not yours) |
 | `POST` | `/api/chat/stream` | authenticated SSE stream (see the streaming contract above) |
 | `POST` | `/api/feedback`    | authenticated score for a LangSmith `run_id` (API only; the UI does not call it) |
 
-The chat, ingest and feedback endpoints need the session cookie, so log in first:
+The chat, ingest, documents and feedback endpoints need the session cookie, so sign in first (use
+`/api/auth/register` with the same body to create the account):
 
 ```bash
 curl -c cookies.txt -X POST http://localhost:8000/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"password":"<APP_AUTH_PASSWORD>"}'
+  -d '{"username":"alice","password":"<password>"}'
+
+curl -b cookies.txt -F 'files=@data/sample_docs/aurora_faq.md' http://localhost:8000/api/ingest
 
 curl -N -b cookies.txt -X POST http://localhost:8000/api/chat/stream \
   -H 'Content-Type: application/json' \
@@ -233,6 +250,9 @@ uv run python -m evals.create_dataset
 uv run python -m evals.run_evals
 uv run python -m evals.run_pairwise
 ```
+
+The evaluation runs search a private collection of their own: before running, they index `data/sample_docs/`
+into it (files already there are skipped). The API never reads that collection.
 
 ### Example/local results
 
@@ -260,6 +280,7 @@ add duplicate questions.
 | **Custom streaming** | mapping `messages`/`updates`/`custom` channels → a clean SSE contract for the UI             |
 | **RAG engineering**  | loaders → chunking → embeddings → Chroma → retriever tool with source attribution            |
 | **LLM evaluation**   | LangSmith datasets, LLM-as-judge + RAG metrics, custom evaluators, pairwise experiments      |
+| **Multi-user isolation** | accounts + server-side sessions, a Chroma collection per user, user-scoped thread memory |
 | **Async backend**    | FastAPI lifespan-managed agent, streaming `EventSourceResponse`, blocking ingestion run in a worker thread |
 | **Modern frontend**  | React 19 + TS streaming hook (`fetch` + `ReadableStream`), Tailwind v4, dark mode              |
 | **Delivery**         | reproducible uv + Docker Compose, single-origin nginx proxy, secrets via env                 |
@@ -271,16 +292,19 @@ src/rag_agent/        FastAPI app + LangGraph agent
   ├─ agent.py         create_agent + system prompt
   ├─ tools.py         retrieve_documents (RAG) + web_search (Tavily/DDG) + citation numbering
   ├─ streaming.py     astream → SSE event mapping
-  ├─ api.py           /health /auth /ingest /chat/stream /feedback
-  ├─ ingest.py        loaders → splitter → Chroma
-  └─ config.py,llms.py,embeddings.py,vectorstore.py,schemas.py
+  ├─ api.py           /health /auth /ingest /documents /chat/stream /feedback
+  ├─ users.py         accounts (scrypt passwords) + sessions in SQLite, account CLI
+  ├─ auth.py          session cookie → current_user dependency
+  ├─ vectorstore.py   one private Chroma collection per user
+  ├─ ingest.py        loaders → splitter → the user's Chroma collection
+  └─ config.py,llms.py,embeddings.py,schemas.py
 
 frontend/             React 19 + Vite + Tailwind v4
   └─ src/hooks/useAgentStream.ts   ← the streaming state machine
   └─ src/lib/sse.ts                ← POST-SSE parser
 
 evals/                LangSmith dataset + evaluation scripts
-data/sample_docs/     demo corpus (auto-ingested on first boot)
+data/sample_docs/     demo corpus (used by the evals; users can upload it)
 docker-compose.yml    backend (uvicorn) + frontend (nginx)
 ```
 
@@ -291,6 +315,11 @@ docker-compose.yml    backend (uvicorn) + frontend (nginx)
 * **SSE, not WebSockets** — the data flow is one-directional server→client, so SSE is simpler. The frontend uses `fetch` + `ReadableStream` rather than `EventSource` so it can POST a JSON body; that means the browser does not automatically reconnect if the stream drops.
 * **Reasoning-model care** — the heavy model is Gemini (via `langchain-google-genai`); `max_tokens` is left unset so reasoning tokens don't truncate the answer.
 * **Per-turn citation numbers** — each chat turn creates a small `SourceCounter` and passes it to the tools through the LangGraph run config, so tools running in the same turn (even in parallel) share one counter while separate requests never do. Numbers are attached to the sources in the backend rather than derived from list position in the UI.
+* **Isolation by construction** — each user's chunks live in their own Chroma collection named after their random
+  user id, and the signed-in user's id reaches the retrieval tool through the LangGraph run config. With no user
+  id the tool refuses to search. Conversation memory is stored under `<user id>:<thread id>`, so a guessed or
+  reused `thread_id` never opens another user's conversation. Sessions are random tokens stored hashed in SQLite,
+  so signing out revokes them.
 * **Web-search fallback** — web search uses Tavily when `TAVILY_API_KEY` is set and keyless DuckDuckGo otherwise (chosen at startup, not per request). If a search call fails, for either provider, the tool logs the error on the server and returns a short "temporarily unavailable" message to the agent, which decides how to continue; the stream is not interrupted and no error details reach the client.
 
 ## 🗺️ Roadmap
@@ -298,4 +327,4 @@ docker-compose.yml    backend (uvicorn) + frontend (nginx)
 * Hybrid (dense + BM25) retrieval and a cross-encoder reranking step
 * Token-level streaming citations (highlight sources as they're used)
 * Online evaluation and in-UI thumbs up/down wired to `/api/feedback` (the endpoint exists; the UI does not use it yet)
-* Multi-user auth and per-user document collections
+* Password change / account deletion and rate limiting on the sign-in endpoints

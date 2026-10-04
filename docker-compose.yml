@@ -11,6 +11,7 @@ services:
       # Keep persisted state inside the mounted volume.
       - CHROMA_DIR=/app/state/chroma_db
       - SQLITE_PATH=/app/state/memory.sqlite
+      - USERS_DB_PATH=/app/state/users.sqlite
     volumes:
       - state:/app/state
     ports:
