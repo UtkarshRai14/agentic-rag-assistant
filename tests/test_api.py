@@ -231,6 +231,8 @@ def test_chat_runs_as_the_logged_in_user(make_client, recording_agent):
 
 @pytest.mark.parametrize("thread_id", ["someone:thread", "a/b", "x" * 101, ""])
 def test_chat_rejects_malformed_thread_ids(make_client, recording_agent, thread_id):
-    response = make_client().post("/api/chat/stream", json={"message": "hi", "thread_id": thread_id})
+    response = make_client().post(
+        "/api/chat/stream", json={"message": "hi", "thread_id": thread_id}
+    )
     assert response.status_code == 422
     assert recording_agent.configs == []

@@ -32,9 +32,7 @@ def _make_target(model_name: str):
     def target(inputs: dict) -> dict:
         result = agent.invoke(
             {"messages": [{"role": "user", "content": inputs["question"]}]},
-            config={
-                "configurable": {"user_id": EVAL_USER_ID, "source_counter": SourceCounter()}
-            },
+            config={"configurable": {"user_id": EVAL_USER_ID, "source_counter": SourceCounter()}},
         )
         answer = result["messages"][-1].text
         context = [

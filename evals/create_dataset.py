@@ -23,6 +23,7 @@ def seed_eval_documents() -> int:
     """Index the sample docs into the evaluation collection (already-indexed files are skipped)."""
     return ingest_directory(EVAL_USER_ID)
 
+
 # Question / reference-answer pairs. Most are answerable from the sample Aurora
 # docs (doc-RAG); a couple require general/world knowledge (web search).
 EXAMPLES: list[dict] = [
@@ -98,12 +99,10 @@ def main() -> None:
         print(f"Created dataset: {dataset.id}")
 
     existing = {
-        example.inputs.get("question")
-        for example in client.list_examples(dataset_id=dataset.id)
+        example.inputs.get("question") for example in client.list_examples(dataset_id=dataset.id)
     }
     new_examples = [
-        example for example in EXAMPLES
-        if example["inputs"]["question"] not in existing
+        example for example in EXAMPLES if example["inputs"]["question"] not in existing
     ]
     if new_examples:
         client.create_examples(dataset_id=dataset.id, examples=new_examples)

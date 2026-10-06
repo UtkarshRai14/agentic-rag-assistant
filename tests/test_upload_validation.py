@@ -31,9 +31,7 @@ def test_oversized_file_is_rejected(make_client):
 
 
 def test_empty_file_is_rejected(make_client):
-    response = make_client().post(
-        "/api/ingest", files={"files": ("note.txt", b"", "text/plain")}
-    )
+    response = make_client().post("/api/ingest", files={"files": ("note.txt", b"", "text/plain")})
     assert response.status_code == 400
 
 
@@ -81,9 +79,7 @@ def test_temp_files_are_removed_when_ingestion_fails(make_client, monkeypatch):
         raise RuntimeError("embedding failed")
 
     monkeypatch.setattr("rag_agent.api.ingest_paths", failing_ingest)
-    response = client.post(
-        "/api/ingest", files={"files": ("note.txt", b"hello", "text/plain")}
-    )
+    response = client.post("/api/ingest", files={"files": ("note.txt", b"hello", "text/plain")})
     assert response.status_code == 500
     assert len(created) == 1
     assert not os.path.exists(created[0])

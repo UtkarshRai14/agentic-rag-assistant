@@ -81,7 +81,5 @@ def test_sessions_expire(monkeypatch):
     user = users.create_user("alice", PASSWORD)
     token = users.create_session(user.id)
     real_time = users.time.time
-    monkeypatch.setattr(
-        users.time, "time", lambda: real_time() + users.SESSION_TTL_SECONDS + 1
-    )
+    monkeypatch.setattr(users.time, "time", lambda: real_time() + users.SESSION_TTL_SECONDS + 1)
     assert users.user_for_session(token) is None

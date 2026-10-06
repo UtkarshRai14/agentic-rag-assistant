@@ -26,8 +26,7 @@ class FakeStore:
 
     def invoke(self, query: str) -> list[Document]:
         return [
-            Document(page_content=f"Passage {i}", metadata={"source": f"doc{i}.md"})
-            for i in (1, 2)
+            Document(page_content=f"Passage {i}", metadata={"source": f"doc{i}.md"}) for i in (1, 2)
         ]
 
 
