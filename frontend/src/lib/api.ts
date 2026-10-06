@@ -16,7 +16,7 @@ export class ApiError extends Error {
   }
 }
 
-async function apiError(res: Response, fallback: string): Promise<ApiError> {
+export async function apiError(res: Response, fallback: string): Promise<ApiError> {
   try {
     const body = await res.json();
     if (typeof body?.detail === "string") return new ApiError(res.status, body.detail);

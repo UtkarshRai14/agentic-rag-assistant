@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { parseSSEStream } from "@/lib/sse";
-import { authFetch } from "@/lib/api";
+import { apiError, authFetch } from "@/lib/api";
 import type { AgentEvent, Source, StepStatus } from "@/lib/events";
 
 export interface TimelineNode {
@@ -122,7 +122,7 @@ export function useAgentStream() {
         body: JSON.stringify({ message, thread_id: threadRef.current }),
         signal: ac.signal,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw await apiError(res, "The assistant could not be reached");
 
       for await (const ev of parseSSEStream(res, ac.signal)) {
         if (ev.type === "start") threadRef.current = ev.thread_id;
@@ -132,7 +132,12 @@ export function useAgentStream() {
       if ((err as Error).name !== "AbortError") {
         dispatch({
           kind: "event",
-          event: { type: "error", thread_id: "", message: String(err), fatal: true },
+          event: {
+            type: "error",
+            thread_id: "",
+            message: err instanceof Error ? err.message : String(err),
+            fatal: true,
+          },
         });
       }
     }
