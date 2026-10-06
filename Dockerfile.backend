@@ -3,13 +3,15 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
 
-# Install dependencies first (better layer caching)
+# Show logs as they are written (uvicorn's access log goes to stdout).
+ENV PYTHONUNBUFFERED=1
+
+# Install dependencies first (better layer caching): code changes reuse this layer.
 COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
 COPY src ./src
 RUN uv sync --frozen --no-dev
-
-# Sample docs for first-boot ingestion
-COPY data ./data
 
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8000
