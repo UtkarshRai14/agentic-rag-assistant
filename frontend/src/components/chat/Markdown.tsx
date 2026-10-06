@@ -74,7 +74,7 @@ function CodeBlock({ code, lang, highlight }: { code: string; lang: string; high
   };
 
   return (
-    <div className="group relative">
+    <div className="code-block group relative">
       <button
         onClick={copy}
         className="absolute right-2 top-2 z-10 rounded-md border border-border bg-surface/80 p-1 text-muted opacity-0 transition-opacity group-hover:opacity-100"
@@ -112,14 +112,14 @@ export const Markdown = memo(function Markdown({
           p: ({ children }) => <p>{linkify(children)}</p>,
           li: ({ children }) => <li>{linkify(children)}</li>,
           td: ({ children }) => <td>{linkify(children)}</td>,
-          code: ({ className, children, ...props }) => {
-            const match = /language-(\w+)/.exec(className || "");
-            const isBlock = "node" in props && match;
-            const raw = String(children).replace(/\n$/, "");
-            if (!isBlock) {
-              return <code className={className}>{children}</code>;
-            }
-            return <CodeBlock code={raw} lang={match![1]} highlight={highlight} />;
+          // A fenced block with a language becomes a CodeBlock, which renders its own <pre>.
+          pre: ({ node, children }) => {
+            const code = node?.children[0];
+            if (code?.type !== "element" || code.tagName !== "code") return <pre>{children}</pre>;
+            const lang = /language-(\w+)/.exec(String(code.properties.className ?? ""))?.[1];
+            if (!lang) return <pre>{children}</pre>;
+            const text = code.children.map((c) => (c.type === "text" ? c.value : "")).join("");
+            return <CodeBlock code={text.replace(/\n$/, "")} lang={lang} highlight={highlight} />;
           },
         }}
       >

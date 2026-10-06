@@ -72,7 +72,7 @@ body {
 }
 
 /* Markdown prose */
-.prose-chat :where(p, ul, ol, pre, blockquote, table):not(:last-child) {
+.prose-chat :where(p, ul, ol, pre, blockquote, table, .code-block):not(:last-child) {
   margin-bottom: 0.75rem;
 }
 .prose-chat ul { list-style: disc; padding-left: 1.25rem; }
