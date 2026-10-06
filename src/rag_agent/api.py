@@ -234,8 +234,11 @@ async def chat_stream(
 
 
 @app.post("/api/feedback", dependencies=[Depends(current_user)])
-async def feedback(req: FeedbackRequest) -> dict:
-    """Forward end-user thumbs up/down into LangSmith."""
+def feedback(req: FeedbackRequest) -> dict:
+    """Forward end-user thumbs up/down into LangSmith.
+
+    A plain function, so FastAPI runs the blocking LangSmith request in a worker thread.
+    """
     try:
         from langsmith import Client
 

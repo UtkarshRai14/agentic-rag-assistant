@@ -189,6 +189,26 @@ def test_document_ids_are_validated(make_client):
     assert response.status_code == 422
 
 
+# --- feedback ---------------------------------------------------------------------
+
+
+def test_feedback_runs_off_the_event_loop(make_client, monkeypatch):
+    on_event_loop: list[bool] = []
+
+    class FakeLangSmithClient:
+        def create_feedback(self, **kwargs) -> None:
+            try:
+                asyncio.get_running_loop()
+                on_event_loop.append(True)
+            except RuntimeError:  # no running loop here, so we are in a worker thread
+                on_event_loop.append(False)
+
+    monkeypatch.setattr("langsmith.Client", FakeLangSmithClient)
+    response = make_client().post("/api/feedback", json={"run_id": "run-1", "score": 1})
+    assert response.json() == {"ok": True}
+    assert on_event_loop == [False]
+
+
 # --- chat -------------------------------------------------------------------------
 
 
