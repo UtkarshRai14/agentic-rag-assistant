@@ -1,5 +1,20 @@
+import io
 import os
 import tempfile
+
+import pytest
+from pypdf import PdfWriter
+
+from rag_agent.config import settings
+
+
+def blank_pdf() -> bytes:
+    """A valid PDF with one empty page and no text, like a scanned document."""
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
 
 
 def track_temp_files(monkeypatch) -> list[str]:
@@ -33,6 +48,34 @@ def test_oversized_file_is_rejected(make_client):
 def test_empty_file_is_rejected(make_client):
     response = make_client().post("/api/ingest", files={"files": ("note.txt", b"", "text/plain")})
     assert response.status_code == 400
+
+
+@pytest.mark.usefixtures("real_store")
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("latin1.txt", "café crème".encode("latin-1")),  # not UTF-8
+        ("damaged.pdf", b"%PDF-1.4 not really a PDF"),
+        ("scan.pdf", blank_pdf()),  # no text layer
+    ],
+    ids=["not-utf8", "damaged-pdf", "no-text-pdf"],
+)
+def test_unreadable_file_is_rejected_and_nothing_is_indexed(
+    make_client, monkeypatch, name, content
+):
+    monkeypatch.setattr(settings, "max_upload_bytes", 1024 * 1024)
+    client = make_client()
+    response = client.post(
+        "/api/ingest",
+        files=[
+            ("files", ("notes.md", b"Readable notes.", "text/markdown")),
+            ("files", (name, content, "application/octet-stream")),
+        ],
+    )
+    assert response.status_code == 400
+    assert name in response.json()["detail"]
+    # The readable file in the same request is not indexed either.
+    assert client.get("/api/documents").json()["documents"] == []
 
 
 def test_unsafe_filename_is_not_used_as_path(make_client, monkeypatch):

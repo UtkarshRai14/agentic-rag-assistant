@@ -21,7 +21,7 @@ from sse_starlette.sse import EventSourceResponse
 from rag_agent.agent import build_agent
 from rag_agent.auth import AUTH_COOKIE, clear_session_cookie, current_user, set_session_cookie
 from rag_agent.config import settings
-from rag_agent.ingest import SUPPORTED_EXTS, ingest_paths
+from rag_agent.ingest import SUPPORTED_EXTS, UnreadableDocumentError, ingest_paths
 from rag_agent.schemas import (
     ChatRequest,
     Credentials,
@@ -177,7 +177,10 @@ async def ingest(
             names.append(original_name)
 
         # Embedding is blocking network I/O, so run it off the event loop.
-        added = await asyncio.to_thread(ingest_paths, user.id, tmp_paths, names)
+        try:
+            added = await asyncio.to_thread(ingest_paths, user.id, tmp_paths, names)
+        except UnreadableDocumentError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
     finally:
         for p in tmp_paths:
             try:

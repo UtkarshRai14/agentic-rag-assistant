@@ -154,6 +154,8 @@ to `FRONTEND_ORIGIN` for direct browser access.
 Uploads are limited to 10 PDF/TXT/Markdown files per request and 10 MiB per file. Within one user's library,
 documents with the same content are indexed only once (SHA-256 content hash), including identical files inside
 one upload; two users can each upload the same file. Each document's source name is its original filename.
+If any file in an upload cannot be indexed (a damaged PDF, a text file that is not UTF-8, or a scanned PDF
+with no text layer), the request is rejected with a `400` naming that file, and nothing from it is indexed.
 Users can see and remove their documents in the **Upload docs** dialog.
 
 Chroma and both SQLite files (accounts and conversation memory) are persisted in the Docker `state` volume.

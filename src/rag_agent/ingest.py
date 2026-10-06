@@ -20,6 +20,10 @@ SUPPORTED_EXTS = _TEXT_EXTS | _PDF_EXTS
 _splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
 
 
+class UnreadableDocumentError(ValueError):
+    """A file has no text that can be indexed. The message is safe to show to users."""
+
+
 def _load_file(path: str) -> list[Document]:
     if Path(path).suffix.lower() in _PDF_EXTS:
         return PyPDFLoader(path).load()
@@ -33,6 +37,8 @@ def ingest_paths(owner_id: str, paths: list[str], names: list[str]) -> int:
     ``source``, because the paths may be temporary files with meaningless names.
     A file whose content is already in the owner's collection is skipped. Other
     users' collections are never read, so the same file can be in several of them.
+    If any file cannot be read or has no text, ``UnreadableDocumentError`` is raised
+    and nothing is added.
     """
     store = get_vectorstore(owner_id)
     uploaded_at = int(time.time())
@@ -48,12 +54,22 @@ def ingest_paths(owner_id: str, paths: list[str], names: list[str]) -> int:
         if existing.get("ids"):
             continue
 
-        docs = _load_file(path)
+        try:
+            docs = _load_file(path)
+        except Exception as exc:  # e.g. a damaged PDF or a text file that is not UTF-8
+            raise UnreadableDocumentError(
+                f"Could not read {name}. Upload a valid PDF, or a text or Markdown file "
+                "saved as UTF-8."
+            ) from exc
         for d in docs:
             d.metadata["source"] = name
             d.metadata["content_hash"] = content_hash
             d.metadata["uploaded_at"] = uploaded_at
         file_chunks = _splitter.split_documents(docs)
+        if not file_chunks:  # e.g. a scanned PDF, which has no text layer
+            raise UnreadableDocumentError(
+                f"{name} has no text to index. Scanned PDFs (images of text) are not supported."
+            )
         chunks.extend(file_chunks)
         ids.extend(f"{content_hash}-{index}" for index in range(len(file_chunks)))
 
