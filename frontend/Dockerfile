@@ -1,8 +1,8 @@
 # Frontend: build static assets, serve via nginx (single-origin proxy to backend)
 FROM node:26-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN npm run build
 
